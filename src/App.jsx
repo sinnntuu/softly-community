@@ -5,6 +5,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -14,10 +15,13 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import {
+  deleteUser,
   getRedirectResult,
   onAuthStateChanged,
+  reauthenticateWithPopup,
   signInWithPopup,
   signInWithRedirect,
   signOut,
@@ -104,6 +108,18 @@ const resizeProfilePhoto = (file) =>
     image.src = objectURL;
   });
 
+const deleteRefsInChunks = async (database, refs) => {
+  const uniqueRefs = [
+    ...new Map(refs.map((item) => [item.path, item])).values(),
+  ];
+
+  for (let index = 0; index < uniqueRefs.length; index += 450) {
+    const batch = writeBatch(database);
+    uniqueRefs.slice(index, index + 450).forEach((item) => batch.delete(item));
+    await batch.commit();
+  }
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -120,6 +136,11 @@ export default function App() {
   const [socialOpen, setSocialOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [postToDelete, setPostToDelete] = useState(null);
+  const [postDeleting, setPostDeleting] = useState(false);
+  const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
+  const [accountDeleteText, setAccountDeleteText] = useState("");
+  const [accountDeleting, setAccountDeleting] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState("");
   const [activeChat, setActiveChat] = useState(null);
   const [message, setMessage] = useState("");
@@ -477,6 +498,158 @@ export default function App() {
     }
   };
 
+  const deletePost = async () => {
+    if (
+      !postToDelete ||
+      !user ||
+      !db ||
+      postToDelete.authorId !== user.uid ||
+      postDeleting
+    ) {
+      return;
+    }
+
+    setPostDeleting(true);
+    try {
+      const postLikes = await getDocs(
+        query(
+          collection(db, "likes"),
+          where("postId", "==", postToDelete.id),
+        ),
+      );
+      await deleteRefsInChunks(
+        db,
+        postLikes.docs.map((item) => item.ref),
+      );
+      await deleteDoc(doc(db, "posts", postToDelete.id));
+      setPostToDelete(null);
+      setNotice("Story deleted.");
+      window.setTimeout(() => setNotice(""), 3500);
+    } catch {
+      setNotice("Story could not be deleted. Please try again.");
+    } finally {
+      setPostDeleting(false);
+    }
+  };
+
+  const openAccountDelete = () => {
+    setProfileOpen(false);
+    setAccountDeleteText("");
+    setAccountDeleteOpen(true);
+  };
+
+  const deleteAccountCompletely = async () => {
+    if (
+      !user ||
+      !auth?.currentUser ||
+      !db ||
+      accountDeleteText !== "DELETE" ||
+      accountDeleting
+    ) {
+      return;
+    }
+
+    setAccountDeleting(true);
+    let dataRemoved = false;
+
+    try {
+      await reauthenticateWithPopup(auth.currentUser, googleProvider);
+
+      const [
+        authoredPosts,
+        ownLikes,
+        sentFollows,
+        receivedFollows,
+        accountMessages,
+      ] = await Promise.all([
+        getDocs(
+          query(collection(db, "posts"), where("authorId", "==", user.uid)),
+        ),
+        getDocs(
+          query(collection(db, "likes"), where("userId", "==", user.uid)),
+        ),
+        getDocs(
+          query(collection(db, "follows"), where("from", "==", user.uid)),
+        ),
+        getDocs(
+          query(collection(db, "follows"), where("to", "==", user.uid)),
+        ),
+        getDocs(
+          query(
+            collection(db, "messages"),
+            where("participants", "array-contains", user.uid),
+          ),
+        ),
+      ]);
+
+      const likesOnAuthoredPosts = await Promise.all(
+        authoredPosts.docs.map((postItem) =>
+          getDocs(
+            query(
+              collection(db, "likes"),
+              where("postId", "==", postItem.id),
+            ),
+          ),
+        ),
+      );
+
+      const relatedRefs = [
+        ...ownLikes.docs.map((item) => item.ref),
+        ...sentFollows.docs.map((item) => item.ref),
+        ...receivedFollows.docs.map((item) => item.ref),
+        ...accountMessages.docs.map((item) => item.ref),
+        ...likesOnAuthoredPosts.flatMap((snapshot) =>
+          snapshot.docs.map((item) => item.ref),
+        ),
+      ];
+
+      await deleteRefsInChunks(db, relatedRefs);
+      await deleteRefsInChunks(
+        db,
+        authoredPosts.docs.map((item) => item.ref),
+      );
+
+      const identityRefs = [doc(db, "users", user.uid)];
+      if (profile?.usernameLower) {
+        identityRefs.unshift(
+          doc(db, "usernames", profile.usernameLower),
+        );
+      }
+      await deleteRefsInChunks(db, identityRefs);
+      dataRemoved = true;
+
+      await deleteUser(auth.currentUser);
+      setAccountDeleteOpen(false);
+      setNotice("");
+    } catch (error) {
+      if (dataRemoved && auth.currentUser) {
+        await setDoc(doc(db, "users", user.uid), {
+          displayName: currentName,
+          email: user.email || "",
+          photoURL: currentPhoto,
+          bio: "",
+          joinedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }).catch(() => {});
+      }
+
+      if (
+        error?.code === "auth/popup-closed-by-user" ||
+        error?.code === "auth/cancelled-popup-request"
+      ) {
+        setNotice("Account deletion cancelled.");
+      } else if (dataRemoved) {
+        setNotice(
+          "Your content was cleared, but the login account stayed active. Please try Delete account again.",
+        );
+      } else {
+        setNotice("Account could not be deleted. Nothing was removed.");
+      }
+    } finally {
+      setAccountDeleting(false);
+    }
+  };
+
   const requestFollow = async (person) => {
     if (!user || !db) return;
     await setDoc(doc(db, "follows", `${user.uid}_${person.uid}`), {
@@ -727,6 +900,15 @@ export default function App() {
                         <strong>{authorName}</strong>
                         <small>COMMUNITY WRITER</small>
                       </div>
+                      {user?.uid === post.authorId && (
+                        <button
+                          className="storyDeleteButton"
+                          onClick={() => setPostToDelete(post)}
+                          title="Delete this story"
+                        >
+                          Delete
+                        </button>
+                      )}
                       <button
                         className={`likeButton ${liked ? "liked" : ""}`}
                         onClick={() => toggleLike(post.id)}
@@ -991,6 +1173,120 @@ export default function App() {
                 {profileSaving ? "Saving…" : "Save profile ↗"}
               </button>
             </form>
+            <div className="dangerZone">
+              <div>
+                <strong>Delete account</strong>
+                <p>
+                  Permanently remove your profile, stories, likes,
+                  connections and messages.
+                </p>
+              </div>
+              <button type="button" onClick={openAccountDelete}>
+                Delete account
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {postToDelete && user && (
+        <div className="modalBackdrop">
+          <section
+            className="composer confirmModal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-story-title"
+          >
+            <button
+              className="modalClose"
+              onClick={() => setPostToDelete(null)}
+              aria-label="Close"
+              disabled={postDeleting}
+            >
+              ×
+            </button>
+            <p className="eyebrow">DELETE STORY</p>
+            <h2 id="delete-story-title">Remove this story?</h2>
+            <p className="confirmCopy">
+              “{postToDelete.title}” and all its likes will be permanently
+              removed.
+            </p>
+            <div className="confirmActions">
+              <button
+                className="cancelButton"
+                onClick={() => setPostToDelete(null)}
+                disabled={postDeleting}
+              >
+                Keep story
+              </button>
+              <button
+                className="destructiveButton"
+                onClick={deletePost}
+                disabled={postDeleting}
+              >
+                {postDeleting ? "Deleting…" : "Delete permanently"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {accountDeleteOpen && user && (
+        <div className="modalBackdrop">
+          <section
+            className="composer confirmModal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-account-title"
+          >
+            <button
+              className="modalClose"
+              onClick={() => setAccountDeleteOpen(false)}
+              aria-label="Close"
+              disabled={accountDeleting}
+            >
+              ×
+            </button>
+            <p className="eyebrow">DANGER ZONE</p>
+            <h2 id="delete-account-title">Delete your account?</h2>
+            <p className="confirmCopy">
+              This permanently deletes your profile, reserved username,
+              stories, likes, connections and private messages. Google will
+              ask you to confirm your identity first.
+            </p>
+            <label className="deleteConfirmLabel">
+              Type <strong>DELETE</strong> to continue
+              <input
+                value={accountDeleteText}
+                onChange={(event) =>
+                  setAccountDeleteText(event.target.value.toUpperCase())
+                }
+                maxLength={6}
+                autoComplete="off"
+                placeholder="DELETE"
+                disabled={accountDeleting}
+              />
+            </label>
+            <div className="confirmActions">
+              <button
+                className="cancelButton"
+                onClick={() => setAccountDeleteOpen(false)}
+                disabled={accountDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="destructiveButton"
+                onClick={deleteAccountCompletely}
+                disabled={
+                  accountDeleteText !== "DELETE" || accountDeleting
+                }
+              >
+                {accountDeleting
+                  ? "Deleting everything…"
+                  : "Delete my account"}
+              </button>
+            </div>
           </section>
         </div>
       )}

@@ -9,9 +9,11 @@ follow requests, connections, and private real-time chat.
 - Google sign-in with Firebase Authentication
 - Create and read public blog posts
 - Real-time likes
+- Owner-only story deletion with like cleanup
 - Editable display name, unique `@username`, bio, and compressed profile photo
 - Find people by username or display name
 - Follow requests, connections, and private real-time chat
+- Re-authenticated account deletion with related-data cleanup
 - Responsive neomorphic design
 - Firestore rules that protect profiles and reserve usernames atomically
 

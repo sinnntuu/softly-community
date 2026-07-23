@@ -64,7 +64,14 @@ service cloud.firestore {
       allow create, update: if signedIn()
         && request.auth.uid == userId
         && validProfile(userId);
-      allow delete: if false;
+      allow delete: if signedIn()
+        && request.auth.uid == userId
+        && (
+          !resource.data.keys().hasAny(["usernameLower"])
+          || !existsAfter(
+            /databases/$(database)/documents/usernames/$(resource.data.usernameLower)
+          )
+        );
     }
 
     match /usernames/{username} {
@@ -102,7 +109,17 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.postId is string
         && likeId == request.resource.data.postId + "_" + request.auth.uid;
-      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || (
+          exists(
+            /databases/$(database)/documents/posts/$(resource.data.postId)
+          )
+          && get(
+            /databases/$(database)/documents/posts/$(resource.data.postId)
+          ).data.authorId == request.auth.uid
+        )
+      );
       allow update: if false;
     }
 
@@ -146,7 +163,9 @@ service cloud.firestore {
           request.resource.data.senderId,
           request.resource.data.receiverId
         );
-      allow update, delete: if false;
+      allow delete: if signedIn()
+        && request.auth.uid in resource.data.participants;
+      allow update: if false;
     }
   }
 }

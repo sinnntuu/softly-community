@@ -868,6 +868,17 @@ a {
     inset -4px -4px 8px #ffffff;
 }
 
+.storyDeleteButton {
+  border: 0;
+  padding: 5px 0;
+  background: transparent;
+  color: #9b5248;
+  cursor: pointer;
+  font-size: 9px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .emptyState {
   padding: 50px;
   text-align: center;
@@ -1240,6 +1251,105 @@ footer button {
   font-weight: 400;
   letter-spacing: normal;
   text-transform: none;
+}
+
+.dangerZone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(155, 82, 72, 0.25);
+}
+
+.dangerZone strong {
+  color: #8f473f;
+  font: 600 14px var(--serif);
+}
+
+.dangerZone p {
+  max-width: 360px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dangerZone button,
+.destructiveButton {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 15px;
+  background: #934d43;
+  color: white;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  box-shadow: 5px 5px 12px rgba(105, 66, 59, 0.24);
+}
+
+.confirmModal {
+  width: min(510px, 100%);
+}
+
+.confirmCopy {
+  margin: -5px 0 25px;
+  color: var(--muted);
+  font: 15px/1.65 var(--serif);
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.cancelButton {
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  background: var(--paper);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  box-shadow:
+    5px 5px 10px #c4c2ba,
+    -5px -5px 10px white;
+}
+
+.destructiveButton:disabled,
+.cancelButton:disabled,
+.dangerZone button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.deleteConfirmLabel {
+  display: block;
+  margin-bottom: 22px;
+  color: #60655e;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.deleteConfirmLabel input {
+  width: 100%;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 14px;
+  outline: 0;
+  padding: 14px 16px;
+  background: var(--paper);
+  color: #8f473f;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  box-shadow:
+    inset 4px 4px 8px #c5c4bc,
+    inset -4px -4px 8px #ffffff;
 }
 
 .formNotice {
@@ -1806,6 +1916,20 @@ footer button {
     align-items: flex-start;
     flex-direction: column;
     padding: 17px;
+  }
+
+  .dangerZone {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .confirmActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .confirmActions button {
+    width: 100%;
   }
 
   .profileEditor form > label,
