@@ -1,0 +1,94 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isConnected(a, b) {
+      return (
+        exists(/databases/$(database)/documents/follows/$(a + "_" + b)) &&
+        get(/databases/$(database)/documents/follows/$(a + "_" + b)).data.status == "accepted"
+      ) || (
+        exists(/databases/$(database)/documents/follows/$(b + "_" + a)) &&
+        get(/databases/$(database)/documents/follows/$(b + "_" + a)).data.status == "accepted"
+      );
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 5
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 40
+        && request.resource.data.body.size() <= 6000;
+      allow update: if signedIn()
+        && resource.data.authorId == request.auth.uid
+        && request.resource.data.authorId == resource.data.authorId;
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    match /likes/{likeId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.postId is string
+        && likeId == request.resource.data.postId + "_" + request.auth.uid;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    match /follows/{followId} {
+      allow read: if signedIn()
+        && (
+          resource.data.from == request.auth.uid ||
+          resource.data.to == request.auth.uid
+        );
+      allow create: if signedIn()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to != request.auth.uid
+        && request.resource.data.status == "pending";
+      allow update: if signedIn()
+        && request.resource.data.from == resource.data.from
+        && request.resource.data.to == resource.data.to
+        && request.resource.data.status in ["pending", "accepted"]
+        && (
+          resource.data.from == request.auth.uid ||
+          resource.data.to == request.auth.uid
+        );
+      allow delete: if signedIn()
+        && (
+          resource.data.from == request.auth.uid ||
+          resource.data.to == request.auth.uid
+        );
+    }
+
+    match /messages/{messageId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+      allow create: if signedIn()
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.receiverId != request.auth.uid
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.receiverId in request.resource.data.participants
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 1000
+        && isConnected(
+          request.resource.data.senderId,
+          request.resource.data.receiverId
+        );
+      allow update, delete: if false;
+    }
+  }
+}
