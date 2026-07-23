@@ -4,10 +4,12 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   limit,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -40,9 +42,71 @@ const initials = (name = "Softly writer") =>
 
 const timeValue = (value) => value?.toMillis?.() ?? 0;
 const chatId = (a, b) => [a, b].sort().join("_");
+const usernamePattern = /^[a-z0-9_]{3,20}$/;
+
+const profileName = (profile, user) =>
+  profile?.displayName || user?.displayName || "Softly writer";
+
+function ProfileAvatar({ person, tone = "sage", large = false }) {
+  const photoURL = person?.photoURL?.trim?.();
+  const name = person?.displayName || "Softly writer";
+
+  return (
+    <span
+      className={`avatar ${tone} ${large ? "avatarLarge" : ""} ${
+        photoURL ? "hasPhoto" : ""
+      }`}
+      aria-hidden="true"
+    >
+      {photoURL ? (
+        <img src={photoURL} alt="" referrerPolicy="no-referrer" />
+      ) : (
+        initials(name)
+      )}
+    </span>
+  );
+}
+
+const resizeProfilePhoto = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith("image/")) {
+      reject(new Error("Please choose an image file."));
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      reject(new Error("Please choose an image smaller than 8 MB."));
+      return;
+    }
+
+    const image = new Image();
+    const objectURL = URL.createObjectURL(file);
+    image.onload = () => {
+      const size = Math.min(image.naturalWidth, image.naturalHeight);
+      const sourceX = (image.naturalWidth - size) / 2;
+      const sourceY = (image.naturalHeight - size) / 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, sourceX, sourceY, size, size, 0, 0, 256, 256);
+      const dataURL = canvas.toDataURL("image/jpeg", 0.78);
+      URL.revokeObjectURL(objectURL);
+      if (dataURL.length > 180000) {
+        reject(new Error("This photo is still too large. Try another image."));
+        return;
+      }
+      resolve(dataURL);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectURL);
+      reject(new Error("That image could not be opened."));
+    };
+    image.src = objectURL;
+  });
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [likes, setLikes] = useState([]);
@@ -54,6 +118,9 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [composerOpen, setComposerOpen] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [peopleSearch, setPeopleSearch] = useState("");
   const [activeChat, setActiveChat] = useState(null);
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState(null);
@@ -63,6 +130,12 @@ export default function App() {
     excerpt: "",
     body: "",
     category: "Life",
+  });
+  const [profileDraft, setProfileDraft] = useState({
+    displayName: "",
+    username: "",
+    bio: "",
+    photoURL: "",
   });
 
   useEffect(() => {
@@ -75,19 +148,44 @@ export default function App() {
       setUser(nextUser);
       setAuthLoading(false);
       if (nextUser && db) {
-        await setDoc(
-          doc(db, "users", nextUser.uid),
-          {
+        const userRef = doc(db, "users", nextUser.uid);
+        const existing = await getDoc(userRef);
+        if (existing.exists()) {
+          await setDoc(
+            userRef,
+            {
+              email: nextUser.email || "",
+              lastSeenAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
+        } else {
+          await setDoc(userRef, {
             displayName: nextUser.displayName || "Softly writer",
             email: nextUser.email || "",
             photoURL: nextUser.photoURL || "",
+            bio: "",
             joinedAt: serverTimestamp(),
-          },
-          { merge: true },
-        );
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!user || !db) {
+      setProfile(null);
+      return;
+    }
+    return onSnapshot(doc(db, "users", user.uid), (snapshot) => {
+      setProfile(
+        snapshot.exists()
+          ? { uid: snapshot.id, ...snapshot.data() }
+          : null,
+      );
+    });
+  }, [user]);
 
   useEffect(() => {
     if (!firebaseReady || !db) return;
@@ -202,9 +300,22 @@ export default function App() {
     return people.filter((person) => ids.has(person.uid));
   }, [people, outgoing, incoming]);
 
+  const filteredPeople = useMemo(() => {
+    const term = peopleSearch.trim().toLowerCase().replace(/^@/, "");
+    if (!term) return people;
+    return people.filter((person) =>
+      `${person.username || ""} ${person.displayName || ""}`
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [people, peopleSearch]);
+
   const incomingRequests = incoming.filter(
     (item) => item.status === "pending",
   );
+  const currentName = profileName(profile, user);
+  const currentPhoto =
+    profile?.photoURL || user?.photoURL || "";
 
   const login = async () => {
     if (!auth) return;
@@ -231,14 +342,115 @@ export default function App() {
     return true;
   };
 
+  const openProfileEditor = () => {
+    setSocialOpen(false);
+    setActiveChat(null);
+    setProfileDraft({
+      displayName: currentName,
+      username: profile?.username || "",
+      bio: profile?.bio || "",
+      photoURL: currentPhoto,
+    });
+    setProfileOpen(true);
+  };
+
+  const chooseProfilePhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const photoURL = await resizeProfilePhoto(file);
+      setProfileDraft((current) => ({ ...current, photoURL }));
+    } catch (error) {
+      setNotice(error.message || "The photo could not be prepared.");
+    }
+  };
+
+  const saveProfile = async (event) => {
+    event.preventDefault();
+    if (!user || !db || profileSaving) return;
+
+    const displayName = profileDraft.displayName.trim();
+    const username = profileDraft.username
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, "");
+    const bio = profileDraft.bio.trim();
+
+    if (displayName.length < 2 || displayName.length > 50) {
+      setNotice("Display name must be between 2 and 50 characters.");
+      return;
+    }
+    if (!usernamePattern.test(username)) {
+      setNotice("Username needs 3–20 lowercase letters, numbers or _ only.");
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const usernameRef = doc(db, "usernames", username);
+      const oldUsername = profile?.usernameLower || "";
+
+      await runTransaction(db, async (transaction) => {
+        const usernameSnapshot = await transaction.get(usernameRef);
+        if (
+          usernameSnapshot.exists() &&
+          usernameSnapshot.data().uid !== user.uid
+        ) {
+          throw new Error("USERNAME_TAKEN");
+        }
+
+        if (oldUsername && oldUsername !== username) {
+          transaction.delete(doc(db, "usernames", oldUsername));
+        }
+
+        transaction.set(
+          usernameRef,
+          {
+            uid: user.uid,
+            username,
+            createdAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+        transaction.set(
+          userRef,
+          {
+            displayName,
+            username,
+            usernameLower: username,
+            bio: bio.slice(0, 220),
+            photoURL: profileDraft.photoURL || "",
+            email: user.email || "",
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      });
+
+      setProfileOpen(false);
+      setNotice("Profile updated.");
+      window.setTimeout(() => setNotice(""), 3500);
+    } catch (error) {
+      setNotice(
+        error.message === "USERNAME_TAKEN"
+          ? "That username is already taken. Try another one."
+          : "Profile could not be saved. Please try again.",
+      );
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const publish = async (event) => {
     event.preventDefault();
     if (!user || !db) return;
     await addDoc(collection(db, "posts"), {
       ...draft,
       authorId: user.uid,
-      authorName: user.displayName || "Softly writer",
-      authorPhoto: user.photoURL || "",
+      authorName: currentName,
+      authorPhoto: currentPhoto,
       createdAt: serverTimestamp(),
     });
     setDraft({ title: "", excerpt: "", body: "", category: "Life" });
@@ -270,7 +482,7 @@ export default function App() {
     await setDoc(doc(db, "follows", `${user.uid}_${person.uid}`), {
       from: user.uid,
       to: person.uid,
-      fromName: user.displayName || "Softly writer",
+      fromName: currentName,
       toName: person.displayName || "Softly writer",
       status: "pending",
       createdAt: serverTimestamp(),
@@ -362,10 +574,17 @@ export default function App() {
           </button>
           {user ? (
             <div className="account">
-              <span className="avatar sage">
-                {initials(user.displayName || "")}
-              </span>
-              <span className="accountName">{user.displayName}</span>
+              <button
+                className="accountProfile"
+                onClick={openProfileEditor}
+                title="Edit your profile"
+              >
+                <ProfileAvatar
+                  person={{ displayName: currentName, photoURL: currentPhoto }}
+                  tone="sage"
+                />
+                <span className="accountName">{currentName}</span>
+              </button>
               <button className="signOut" onClick={() => signOut(auth)}>
                 Sign out
               </button>
@@ -448,6 +667,14 @@ export default function App() {
             {visiblePosts.map((post, index) => {
               const postLikes = likesByPost[post.id] || [];
               const liked = user ? postLikes.includes(user.uid) : false;
+              const liveAuthor =
+                post.authorId === user?.uid
+                  ? profile
+                  : people.find((person) => person.uid === post.authorId);
+              const authorName =
+                liveAuthor?.displayName || post.authorName || "Softly writer";
+              const authorPhoto =
+                liveAuthor?.photoURL || post.authorPhoto || "";
               return (
                 <article className="storyCard" key={post.id}>
                   <div className={`storyArt ${tones[index % 3]}`}>
@@ -489,11 +716,15 @@ export default function App() {
                       {expanded === post.id ? "Close story ↑" : "Read story →"}
                     </button>
                     <div className="byline">
-                      <span className={`avatar ${tones[index % 3]}`}>
-                        {initials(post.authorName)}
-                      </span>
+                      <ProfileAvatar
+                        person={{
+                          displayName: authorName,
+                          photoURL: authorPhoto,
+                        }}
+                        tone={tones[index % 3]}
+                      />
                       <div>
-                        <strong>{post.authorName}</strong>
+                        <strong>{authorName}</strong>
                         <small>COMMUNITY WRITER</small>
                       </div>
                       <button
@@ -626,6 +857,144 @@ export default function App() {
         </div>
       )}
 
+      {profileOpen && user && (
+        <div className="modalBackdrop">
+          <section
+            className="composer profileEditor"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-title"
+          >
+            <button
+              className="modalClose"
+              onClick={() => setProfileOpen(false)}
+              aria-label="Close profile editor"
+            >
+              ×
+            </button>
+            <p className="eyebrow">YOUR PROFILE</p>
+            <h2 id="profile-title">Make it yours.</h2>
+            <form onSubmit={saveProfile}>
+              <div className="profilePhotoEditor">
+                <ProfileAvatar
+                  person={{
+                    displayName:
+                      profileDraft.displayName || "Softly writer",
+                    photoURL: profileDraft.photoURL,
+                  }}
+                  tone="peach"
+                  large
+                />
+                <div>
+                  <strong>Profile photo</strong>
+                  <p>Choose a clear square photo. We compress it for free.</p>
+                  <div className="profilePhotoActions">
+                    <label className="fileButton">
+                      Choose photo
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={chooseProfilePhoto}
+                      />
+                    </label>
+                    {user.photoURL && (
+                      <button
+                        type="button"
+                        className="profileTextButton"
+                        onClick={() =>
+                          setProfileDraft((current) => ({
+                            ...current,
+                            photoURL: user.photoURL,
+                          }))
+                        }
+                      >
+                        Use Google photo
+                      </button>
+                    )}
+                    {profileDraft.photoURL && (
+                      <button
+                        type="button"
+                        className="profileTextButton"
+                        onClick={() =>
+                          setProfileDraft((current) => ({
+                            ...current,
+                            photoURL: "",
+                          }))
+                        }
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <label>
+                Display name
+                <input
+                  required
+                  minLength={2}
+                  maxLength={50}
+                  value={profileDraft.displayName}
+                  onChange={(event) =>
+                    setProfileDraft({
+                      ...profileDraft,
+                      displayName: event.target.value,
+                    })
+                  }
+                  placeholder="Your name"
+                />
+              </label>
+              <label>
+                Username
+                <div className="usernameField">
+                  <span>@</span>
+                  <input
+                    required
+                    minLength={3}
+                    maxLength={20}
+                    pattern="[a-z0-9_]{3,20}"
+                    value={profileDraft.username}
+                    onChange={(event) =>
+                      setProfileDraft({
+                        ...profileDraft,
+                        username: event.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9_]/g, ""),
+                      })
+                    }
+                    placeholder="your_username"
+                  />
+                </div>
+                <small className="fieldHint">
+                  3–20 lowercase letters, numbers or underscore.
+                </small>
+              </label>
+              <label>
+                Bio
+                <textarea
+                  maxLength={220}
+                  rows={3}
+                  value={profileDraft.bio}
+                  onChange={(event) =>
+                    setProfileDraft({
+                      ...profileDraft,
+                      bio: event.target.value,
+                    })
+                  }
+                  placeholder="Tell the community a little about yourself…"
+                />
+                <small className="fieldHint">
+                  {profileDraft.bio.length}/220
+                </small>
+              </label>
+              <button className="publishButton" disabled={profileSaving}>
+                {profileSaving ? "Saving…" : "Save profile ↗"}
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+
       {socialOpen && user && (
         <div className="modalBackdrop">
           <section className="socialPanel" role="dialog" aria-modal="true">
@@ -642,6 +1011,24 @@ export default function App() {
               <p className="eyebrow">YOUR COMMUNITY</p>
               <h2>People & chat</h2>
 
+              <div className="profileSummary">
+                <ProfileAvatar
+                  person={{ displayName: currentName, photoURL: currentPhoto }}
+                  tone="peach"
+                  large
+                />
+                <div>
+                  <strong>{currentName}</strong>
+                  <small>
+                    {profile?.username
+                      ? `@${profile.username}`
+                      : "Choose your username"}
+                  </small>
+                  {profile?.bio && <p>{profile.bio}</p>}
+                </div>
+                <button onClick={openProfileEditor}>Edit</button>
+              </div>
+
               {incomingRequests.length > 0 && (
                 <div className="requestSection">
                   <h3>Requests</h3>
@@ -652,9 +1039,7 @@ export default function App() {
                     if (!person) return null;
                     return (
                       <div className="personRow" key={request.id}>
-                        <span className="avatar peach">
-                          {initials(person.displayName)}
-                        </span>
+                        <ProfileAvatar person={person} tone="peach" />
                         <strong>{person.displayName}</strong>
                         <div className="requestActions">
                           <button onClick={() => answerRequest(request, true)}>
@@ -672,17 +1057,28 @@ export default function App() {
 
               <div className="peopleSection">
                 <h3>Discover people</h3>
-                {people.length ? (
-                  people.map((person) => {
+                <div className="peopleSearch">
+                  <span>@</span>
+                  <input
+                    value={peopleSearch}
+                    onChange={(event) => setPeopleSearch(event.target.value)}
+                    placeholder="Find by username or name"
+                    aria-label="Find people by username or name"
+                  />
+                </div>
+                {filteredPeople.length ? (
+                  filteredPeople.map((person) => {
                     const status = relationship(person);
                     return (
                       <div className="personRow" key={person.uid}>
-                        <span className="avatar sage">
-                          {initials(person.displayName)}
-                        </span>
+                        <ProfileAvatar person={person} tone="sage" />
                         <div className="personName">
                           <strong>{person.displayName}</strong>
                           <small>
+                            {person.username
+                              ? `@${person.username}`
+                              : "No username yet"}
+                            {" · "}
                             {status === "connected"
                               ? "Connected"
                               : status === "requested"
@@ -728,7 +1124,9 @@ export default function App() {
                   })
                 ) : (
                   <p className="quietText">
-                    More people will appear here after they join.
+                    {peopleSearch
+                      ? "No matching people found."
+                      : "More people will appear here after they join."}
                   </p>
                 )}
               </div>
@@ -738,9 +1136,7 @@ export default function App() {
               {activeChat ? (
                 <>
                   <header className="chatHeader">
-                    <span className="avatar sky">
-                      {initials(activeChat.displayName)}
-                    </span>
+                    <ProfileAvatar person={activeChat} tone="sky" />
                     <div>
                       <strong>{activeChat.displayName}</strong>
                       <small>PRIVATE CONVERSATION</small>

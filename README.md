@@ -1,7 +1,19 @@
 # Softly — social blogging platform
 
 A portfolio-ready social publishing app with Google login, public blog posts,
-likes, follow requests, connections, and private real-time chat.
+likes, editable profiles, unique usernames, profile photos, people search,
+follow requests, connections, and private real-time chat.
+
+## Current features
+
+- Google sign-in with Firebase Authentication
+- Create and read public blog posts
+- Real-time likes
+- Editable display name, unique `@username`, bio, and compressed profile photo
+- Find people by username or display name
+- Follow requests, connections, and private real-time chat
+- Responsive neomorphic design
+- Firestore rules that protect profiles and reserve usernames atomically
 
 ## Free Firebase setup
 

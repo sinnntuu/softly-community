@@ -153,6 +153,17 @@ a {
   gap: 10px !important;
 }
 
+.accountProfile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
 .accountName {
   max-width: 120px;
   overflow: hidden;
@@ -530,6 +541,7 @@ a {
 }
 
 .avatar {
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
   width: 38px;
@@ -538,6 +550,23 @@ a {
   font-size: 10px;
   font-weight: 700;
   color: #454943;
+  overflow: hidden;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.avatarLarge {
+  width: 72px;
+  height: 72px;
+  font-size: 18px;
+  box-shadow:
+    7px 7px 14px #c1c0b8,
+    -7px -7px 14px #ffffff;
 }
 
 .avatar.coral {
@@ -1122,6 +1151,97 @@ footer button {
   opacity: 0.6;
 }
 
+.profileEditor {
+  width: min(620px, 100%);
+}
+
+.profileEditor form > label,
+.profilePhotoEditor {
+  grid-column: 1 / -1;
+}
+
+.profilePhotoEditor {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 4px;
+  padding: 20px;
+  border-radius: 20px;
+  box-shadow:
+    inset 4px 4px 9px #c5c4bc,
+    inset -4px -4px 9px #ffffff;
+}
+
+.profilePhotoEditor strong {
+  display: block;
+  font: 600 15px var(--serif);
+}
+
+.profilePhotoEditor p {
+  margin: 5px 0 12px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.profilePhotoActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.fileButton,
+.profileTextButton {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--paper);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+  box-shadow:
+    4px 4px 9px #c2c0b8,
+    -4px -4px 9px white;
+}
+
+.fileButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.usernameField {
+  position: relative;
+}
+
+.usernameField > span {
+  position: absolute;
+  z-index: 1;
+  left: 16px;
+  top: 22px;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.usernameField input {
+  padding-left: 34px;
+}
+
+.composer .fieldHint {
+  margin: 7px 0 0 5px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .formNotice {
   grid-column: 1 / -1;
   margin: 0;
@@ -1170,6 +1290,53 @@ footer button {
   letter-spacing: -1px;
 }
 
+.profileSummary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 16px;
+  border-radius: 19px;
+  box-shadow:
+    inset 4px 4px 9px #c5c4bc,
+    inset -4px -4px 9px white;
+}
+
+.profileSummary strong,
+.profileSummary small {
+  display: block;
+}
+
+.profileSummary strong {
+  overflow: hidden;
+  font: 600 14px var(--serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileSummary small {
+  margin-top: 3px;
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.profileSummary p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.profileSummary > button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .requestSection,
 .peopleSection {
   margin-top: 28px;
@@ -1182,6 +1349,33 @@ footer button {
   font-size: 9px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
+}
+
+.peopleSearch {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.peopleSearch span {
+  position: absolute;
+  left: 13px;
+  top: 10px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.peopleSearch input {
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  outline: 0;
+  padding: 10px 14px 10px 29px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 10px;
+  box-shadow:
+    inset 3px 3px 7px #c5c4bc,
+    inset -3px -3px 7px white;
 }
 
 .personRow {
@@ -1606,6 +1800,26 @@ footer button {
   .composer label:nth-child(-n + 3),
   .publishButton {
     grid-column: 1;
+  }
+
+  .profilePhotoEditor {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 17px;
+  }
+
+  .profileEditor form > label,
+  .profileEditor .profilePhotoEditor {
+    grid-column: 1;
+  }
+
+  .profileSummary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .profileSummary > button {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .socialPanel {

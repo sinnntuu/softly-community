@@ -16,10 +16,68 @@ service cloud.firestore {
       );
     }
 
+    function validUsername(userId) {
+      return (
+        !request.resource.data.keys().hasAny(["username", "usernameLower"])
+      ) || (
+        request.resource.data.keys().hasAll(["username", "usernameLower"]) &&
+        request.resource.data.username is string &&
+        request.resource.data.usernameLower is string &&
+        request.resource.data.username == request.resource.data.usernameLower &&
+        request.resource.data.username.matches("^[a-z0-9_]{3,20}$") &&
+        existsAfter(
+          /databases/$(database)/documents/usernames/$(request.resource.data.usernameLower)
+        ) &&
+        getAfter(
+          /databases/$(database)/documents/usernames/$(request.resource.data.usernameLower)
+        ).data.uid == userId
+      );
+    }
+
+    function validProfile(userId) {
+      return request.resource.data.keys().hasOnly([
+          "displayName",
+          "email",
+          "photoURL",
+          "bio",
+          "username",
+          "usernameLower",
+          "joinedAt",
+          "lastSeenAt",
+          "updatedAt"
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 50
+        && request.resource.data.email == request.auth.token.email
+        && (!request.resource.data.keys().hasAny(["bio"])
+          || (request.resource.data.bio is string
+            && request.resource.data.bio.size() <= 220))
+        && (!request.resource.data.keys().hasAny(["photoURL"])
+          || (request.resource.data.photoURL is string
+            && request.resource.data.photoURL.size() <= 180000))
+        && validUsername(userId);
+    }
+
     match /users/{userId} {
       allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn()
+        && request.auth.uid == userId
+        && validProfile(userId);
       allow delete: if false;
+    }
+
+    match /usernames/{username} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && username.matches("^[a-z0-9_]{3,20}$")
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username == username;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.username == username;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     match /posts/{postId} {
