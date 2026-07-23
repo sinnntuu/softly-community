@@ -59,6 +59,27 @@ service cloud.firestore {
         && validUsername(userId);
     }
 
+    function validPostMedia() {
+      return (
+        !request.resource.data.keys().hasAny(["mediaType", "mediaURL"])
+      ) || (
+        request.resource.data.keys().hasAll(["mediaType", "mediaURL"])
+        && request.resource.data.mediaType in ["image", "video"]
+        && request.resource.data.mediaURL is string
+        && (
+          (
+            request.resource.data.mediaType == "image"
+            && request.resource.data.mediaURL.size() <= 500000
+          )
+          || (
+            request.resource.data.mediaType == "video"
+            && request.resource.data.mediaURL.size() <= 1000
+            && request.resource.data.mediaURL.matches("^https://.*")
+          )
+        )
+      );
+    }
+
     match /users/{userId} {
       allow read: if signedIn();
       allow create, update: if signedIn()
@@ -96,10 +117,12 @@ service cloud.firestore {
         && request.resource.data.title.size() <= 120
         && request.resource.data.body is string
         && request.resource.data.body.size() >= 40
-        && request.resource.data.body.size() <= 6000;
+        && request.resource.data.body.size() <= 6000
+        && validPostMedia();
       allow update: if signedIn()
         && resource.data.authorId == request.auth.uid
-        && request.resource.data.authorId == resource.data.authorId;
+        && request.resource.data.authorId == resource.data.authorId
+        && validPostMedia();
       allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
     }
 

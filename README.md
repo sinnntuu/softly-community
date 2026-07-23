@@ -8,6 +8,8 @@ follow requests, connections, and private real-time chat.
 
 - Google sign-in with Firebase Authentication
 - Create and read public blog posts
+- Add a compressed story photo without paid storage
+- Share YouTube, Vimeo, Google Drive, MP4, WebM, or OGG videos
 - Real-time likes
 - Owner-only story deletion with like cleanup
 - Editable display name, unique `@username`, bio, and compressed profile photo

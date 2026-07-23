@@ -108,6 +108,150 @@ const resizeProfilePhoto = (file) =>
     image.src = objectURL;
   });
 
+const compressStoryPhoto = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith("image/")) {
+      reject(new Error("Please choose an image file."));
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      reject(new Error("Please choose an image smaller than 15 MB."));
+      return;
+    }
+
+    const image = new Image();
+    const objectURL = URL.createObjectURL(file);
+    image.onload = () => {
+      let scale = Math.min(
+        1,
+        1280 / Math.max(image.naturalWidth, image.naturalHeight),
+      );
+      let quality = 0.8;
+      let dataURL = "";
+
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#e9e7df";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        dataURL = canvas.toDataURL("image/jpeg", quality);
+        if (dataURL.length <= 480000) break;
+        if (quality > 0.56) {
+          quality -= 0.08;
+        } else {
+          scale *= 0.82;
+        }
+      }
+
+      URL.revokeObjectURL(objectURL);
+      if (!dataURL || dataURL.length > 480000) {
+        reject(new Error("This photo could not be compressed enough."));
+        return;
+      }
+      resolve(dataURL);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectURL);
+      reject(new Error("That image could not be opened."));
+    };
+    image.src = objectURL;
+  });
+
+const getVideoDetails = (value = "") => {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:") return null;
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    let videoId = "";
+
+    if (host === "youtu.be") {
+      videoId = url.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "youtube-nocookie.com"
+    ) {
+      videoId =
+        url.searchParams.get("v") ||
+        url.pathname.match(/^\/(?:shorts|embed)\/([^/?]+)/)?.[1] ||
+        "";
+    }
+
+    if (/^[a-zA-Z0-9_-]{6,20}$/.test(videoId)) {
+      return {
+        kind: "embed",
+        provider: "YouTube",
+        src: `https://www.youtube-nocookie.com/embed/${videoId}`,
+        thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      };
+    }
+
+    if (host === "vimeo.com" || host === "player.vimeo.com") {
+      const vimeoId = url.pathname.match(/(?:video\/)?(\d{6,12})/)?.[1];
+      if (vimeoId) {
+        return {
+          kind: "embed",
+          provider: "Vimeo",
+          src: `https://player.vimeo.com/video/${vimeoId}`,
+          thumbnail: "",
+        };
+      }
+    }
+
+    if (host === "drive.google.com") {
+      const driveId = url.pathname.match(/\/file\/d\/([^/]+)/)?.[1];
+      if (driveId) {
+        return {
+          kind: "embed",
+          provider: "Google Drive",
+          src: `https://drive.google.com/file/d/${driveId}/preview`,
+          thumbnail: "",
+        };
+      }
+    }
+
+    if (/\.(mp4|webm|ogg)$/i.test(url.pathname)) {
+      return {
+        kind: "direct",
+        provider: "Video",
+        src: url.toString(),
+        thumbnail: "",
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+function StoryVideo({ details, title }) {
+  if (!details) return null;
+  if (details.kind === "direct") {
+    return (
+      <video className="storyVideo" controls preload="metadata">
+        <source src={details.src} />
+        Your browser does not support this video.
+      </video>
+    );
+  }
+
+  return (
+    <div className="storyVideoFrame">
+      <iframe
+        src={details.src}
+        title={`${title} — ${details.provider} video`}
+        loading="lazy"
+        allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+        allowFullScreen
+      />
+    </div>
+  );
+}
+
 const deleteRefsInChunks = async (database, refs) => {
   const uniqueRefs = [
     ...new Map(refs.map((item) => [item.path, item])).values(),
@@ -121,8 +265,30 @@ const deleteRefsInChunks = async (database, refs) => {
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const mediaPreviewMode =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("preview") === "media";
+  const previewUser = mediaPreviewMode
+    ? {
+        uid: "local-media-preview",
+        displayName: "Preview Writer",
+        email: "preview@example.com",
+        photoURL: "",
+      }
+    : null;
+  const [user, setUser] = useState(previewUser);
+  const [profile, setProfile] = useState(
+    previewUser
+      ? {
+          uid: previewUser.uid,
+          displayName: previewUser.displayName,
+          username: "preview_writer",
+          usernameLower: "preview_writer",
+          bio: "Local media layout preview",
+          photoURL: "",
+        }
+      : null,
+  );
   const [authLoading, setAuthLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [likes, setLikes] = useState([]);
@@ -136,6 +302,8 @@ export default function App() {
   const [socialOpen, setSocialOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [mediaPreparing, setMediaPreparing] = useState(false);
+  const [storyPublishing, setStoryPublishing] = useState(false);
   const [postToDelete, setPostToDelete] = useState(null);
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
@@ -151,6 +319,8 @@ export default function App() {
     excerpt: "",
     body: "",
     category: "Life",
+    mediaType: "",
+    mediaURL: "",
   });
   const [profileDraft, setProfileDraft] = useState({
     displayName: "",
@@ -160,6 +330,10 @@ export default function App() {
   });
 
   useEffect(() => {
+    if (mediaPreviewMode) {
+      setAuthLoading(false);
+      return;
+    }
     if (!firebaseReady || !auth) {
       setAuthLoading(false);
       return;
@@ -195,6 +369,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (mediaPreviewMode) return;
     if (!user || !db) {
       setProfile(null);
       return;
@@ -228,6 +403,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (mediaPreviewMode) {
+      setPeople([]);
+      setOutgoing([]);
+      setIncoming([]);
+      return;
+    }
     if (!user || !db) {
       setPeople([]);
       setOutgoing([]);
@@ -337,6 +518,13 @@ export default function App() {
   const currentName = profileName(profile, user);
   const currentPhoto =
     profile?.photoURL || user?.photoURL || "";
+  const draftVideoDetails = useMemo(
+    () =>
+      draft.mediaType === "video"
+        ? getVideoDetails(draft.mediaURL)
+        : null,
+    [draft.mediaType, draft.mediaURL],
+  );
 
   const login = async () => {
     if (!auth) return;
@@ -464,20 +652,80 @@ export default function App() {
     }
   };
 
+  const chooseStoryPhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setMediaPreparing(true);
+    try {
+      const mediaURL = await compressStoryPhoto(file);
+      setDraft((current) => ({
+        ...current,
+        mediaType: "image",
+        mediaURL,
+      }));
+      setNotice("Photo ready.");
+      window.setTimeout(() => setNotice(""), 2200);
+    } catch (error) {
+      setNotice(error.message || "The story photo could not be prepared.");
+    } finally {
+      setMediaPreparing(false);
+    }
+  };
+
   const publish = async (event) => {
     event.preventDefault();
-    if (!user || !db) return;
-    await addDoc(collection(db, "posts"), {
-      ...draft,
-      authorId: user.uid,
-      authorName: currentName,
-      authorPhoto: currentPhoto,
-      createdAt: serverTimestamp(),
-    });
-    setDraft({ title: "", excerpt: "", body: "", category: "Life" });
-    setComposerOpen(false);
-    setNotice("Your story is live.");
-    window.setTimeout(() => setNotice(""), 3500);
+    if (mediaPreviewMode) {
+      setNotice("Local preview only — nothing was published.");
+      return;
+    }
+    if (!user || !db || storyPublishing || mediaPreparing) return;
+
+    if (
+      draft.mediaType === "video" &&
+      !getVideoDetails(draft.mediaURL)
+    ) {
+      setNotice(
+        "Use a public YouTube, Vimeo, Google Drive, MP4, WebM or OGG link.",
+      );
+      return;
+    }
+
+    setStoryPublishing(true);
+    try {
+      const story = {
+        title: draft.title,
+        excerpt: draft.excerpt,
+        body: draft.body,
+        category: draft.category,
+        authorId: user.uid,
+        authorName: currentName,
+        authorPhoto: currentPhoto,
+        createdAt: serverTimestamp(),
+      };
+      if (draft.mediaType && draft.mediaURL) {
+        story.mediaType = draft.mediaType;
+        story.mediaURL = draft.mediaURL;
+      }
+
+      await addDoc(collection(db, "posts"), story);
+      setDraft({
+        title: "",
+        excerpt: "",
+        body: "",
+        category: "Life",
+        mediaType: "",
+        mediaURL: "",
+      });
+      setComposerOpen(false);
+      setNotice("Your story is live.");
+      window.setTimeout(() => setNotice(""), 3500);
+    } catch {
+      setNotice("Your story could not be published. Please try again.");
+    } finally {
+      setStoryPublishing(false);
+    }
   };
 
   const toggleLike = async (postId) => {
@@ -848,13 +1096,39 @@ export default function App() {
                 liveAuthor?.displayName || post.authorName || "Softly writer";
               const authorPhoto =
                 liveAuthor?.photoURL || post.authorPhoto || "";
+              const videoDetails =
+                post.mediaType === "video"
+                  ? getVideoDetails(post.mediaURL)
+                  : null;
+              const mediaThumbnail =
+                post.mediaType === "image"
+                  ? post.mediaURL
+                  : videoDetails?.thumbnail || "";
               return (
                 <article className="storyCard" key={post.id}>
-                  <div className={`storyArt ${tones[index % 3]}`}>
+                  <div
+                    className={`storyArt ${tones[index % 3]} ${
+                      mediaThumbnail ? "hasMedia" : ""
+                    }`}
+                  >
+                    {mediaThumbnail && (
+                      <img
+                        className="storyMediaImage"
+                        src={mediaThumbnail}
+                        alt=""
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
                     <span className="storyNumber">
                       {String(index + 1).padStart(2, "0")}
                     </span>
-                    <div className="artShape" />
+                    {!mediaThumbnail && <div className="artShape" />}
+                    {post.mediaType === "video" && videoDetails && (
+                      <span className="videoBadge">
+                        ▶ {videoDetails.provider}
+                      </span>
+                    )}
                     <span>{post.category?.toUpperCase()}</span>
                   </div>
                   <div className="storyBody">
@@ -878,7 +1152,15 @@ export default function App() {
                     <h3>{post.title}</h3>
                     <p>{post.excerpt}</p>
                     {expanded === post.id && (
-                      <p className="fullStory">{post.body}</p>
+                      <>
+                        {post.mediaType === "video" && videoDetails && (
+                          <StoryVideo
+                            details={videoDetails}
+                            title={post.title}
+                          />
+                        )}
+                        <p className="fullStory">{post.body}</p>
+                      </>
                     )}
                     <button
                       className="readMore"
@@ -1020,6 +1302,81 @@ export default function App() {
                   placeholder="Write from your experience…"
                 />
               </label>
+              <div className="mediaComposer">
+                <div className="mediaComposerHead">
+                  <div>
+                    <strong>Add media</strong>
+                    <span>Optional · no paid API needed</span>
+                  </div>
+                  {draft.mediaType && (
+                    <button
+                      type="button"
+                      className="removeMediaButton"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          mediaType: "",
+                          mediaURL: "",
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <div className="mediaOptions">
+                  <label className="storyPhotoButton">
+                    <span>{mediaPreparing ? "Compressing…" : "＋ Add photo"}</span>
+                    <small>JPG, PNG or WebP · max 15 MB</small>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={chooseStoryPhoto}
+                      disabled={mediaPreparing}
+                    />
+                  </label>
+
+                  <div className="mediaOr">OR</div>
+
+                  <label className="videoLinkField">
+                    Video link
+                    <input
+                      type="url"
+                      value={
+                        draft.mediaType === "video" ? draft.mediaURL : ""
+                      }
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          mediaType: event.target.value ? "video" : "",
+                          mediaURL: event.target.value,
+                        })
+                      }
+                      placeholder="YouTube, Vimeo, Drive or direct MP4 link"
+                    />
+                  </label>
+                </div>
+
+                {draft.mediaType === "image" && draft.mediaURL && (
+                  <div className="mediaPreview">
+                    <img src={draft.mediaURL} alt="Story preview" />
+                    <span>Photo ready</span>
+                  </div>
+                )}
+
+                {draft.mediaType === "video" && draft.mediaURL && (
+                  <div
+                    className={`videoLinkStatus ${
+                      draftVideoDetails ? "valid" : "invalid"
+                    }`}
+                  >
+                    {draftVideoDetails
+                      ? `✓ ${draftVideoDetails.provider} video ready`
+                      : "Use a supported public HTTPS video link."}
+                  </div>
+                )}
+              </div>
               <label>
                 Category
                 <select
@@ -1033,7 +1390,12 @@ export default function App() {
                   ))}
                 </select>
               </label>
-              <button className="publishButton">Publish story ↗</button>
+              <button
+                className="publishButton"
+                disabled={storyPublishing || mediaPreparing}
+              >
+                {storyPublishing ? "Publishing…" : "Publish story ↗"}
+              </button>
             </form>
           </section>
         </div>
