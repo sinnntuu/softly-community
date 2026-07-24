@@ -1824,6 +1824,10 @@ footer button {
   border-bottom: 1px solid rgba(103, 107, 100, 0.15);
 }
 
+.chatIdentity {
+  min-width: 0;
+}
+
 .chatHeader strong,
 .chatHeader small {
   display: block;
@@ -1840,8 +1844,32 @@ footer button {
   letter-spacing: 0.12em;
 }
 
-.removeConnection {
+.videoCallButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: #687766;
+  color: white;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  box-shadow: 5px 5px 12px rgba(68, 75, 66, 0.26);
+}
+
+.videoCallButton span {
+  font-size: 12px;
+}
+
+.videoCallButton:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.removeConnection {
   border: 0;
   background: transparent;
   color: #9b5248;
@@ -1877,6 +1905,74 @@ footer button {
   background: #687766;
   color: white;
   box-shadow: 5px 5px 14px rgba(68, 75, 66, 0.28);
+}
+
+.callInvitation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 13px;
+  width: min(360px, 86%);
+  margin: 0 0 15px;
+  border: 1px solid rgba(104, 119, 102, 0.14);
+  border-radius: 22px 22px 22px 7px;
+  padding: 17px;
+  background: linear-gradient(145deg, #f5f2e9, #e7e3d8);
+  color: var(--ink);
+  box-shadow:
+    7px 7px 15px rgba(180, 178, 169, 0.78),
+    -6px -6px 14px rgba(255, 255, 255, 0.82);
+}
+
+.callInvitation.mine {
+  margin-left: auto;
+  border-radius: 22px 22px 7px 22px;
+}
+
+.callInvitationIcon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #687766;
+  color: white;
+  font-size: 16px;
+  box-shadow: 4px 4px 9px rgba(67, 76, 65, 0.25);
+}
+
+.callInvitation small,
+.callInvitation strong {
+  display: block;
+}
+
+.callInvitation small {
+  margin: 1px 0 6px;
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.callInvitation strong {
+  font: 600 15px/1.25 var(--serif);
+}
+
+.callInvitation p {
+  margin: 8px 0 13px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.callInvitation a {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: var(--ink);
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .messageForm {
@@ -2213,6 +2309,35 @@ footer button {
 
   .chatArea {
     height: 52%;
+  }
+
+  .chatHeader {
+    flex-wrap: wrap;
+    gap: 9px;
+    padding: 15px 52px 13px 16px;
+  }
+
+  .chatIdentity {
+    flex: 1;
+  }
+
+  .videoCallButton {
+    order: 3;
+    margin-left: 51px;
+    padding: 9px 12px;
+  }
+
+  .removeConnection {
+    margin-left: 0;
+  }
+
+  .messageList {
+    padding: 17px;
+  }
+
+  .callInvitation {
+    width: min(340px, 94%);
+    padding: 14px;
   }
 
   .chatPlaceholder {

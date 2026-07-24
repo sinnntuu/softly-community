@@ -15,6 +15,7 @@ follow requests, connections, and private real-time chat.
 - Editable display name, unique `@username`, bio, and compressed profile photo
 - Find people by username or display name
 - Follow requests, connections, and private real-time chat
+- Video-call invitations inside private chat using Jitsi Meet
 - Re-authenticated account deletion with related-data cleanup
 - Responsive neomorphic design
 - Firestore rules that protect profiles and reserve usernames atomically
@@ -66,4 +67,4 @@ designed to be public, but keeping environments separate is still good practice.
 **Softly — Social Blogging Platform**  
 Built a responsive React and Firebase community platform with Google OAuth,
 real-time Firestore data, publishing, likes, follow requests, secure
-authorization rules, and private messaging.
+authorization rules, private messaging, and video-call invitations.

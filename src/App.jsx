@@ -46,6 +46,20 @@ const initials = (name = "Softly writer") =>
 
 const timeValue = (value) => value?.toMillis?.() ?? 0;
 const chatId = (a, b) => [a, b].sort().join("_");
+const callURL = (room) =>
+  `https://meet.jit.si/${encodeURIComponent(room)}`;
+const createCallRoom = () => {
+  if (globalThis.crypto?.getRandomValues) {
+    const values = new Uint32Array(4);
+    globalThis.crypto.getRandomValues(values);
+    return `Softly-${Array.from(values, (value) =>
+      value.toString(36),
+    ).join("-")}`;
+  }
+  return `Softly-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 14)}`;
+};
 const usernamePattern = /^[a-z0-9_]{3,20}$/;
 
 const profileName = (profile, user) =>
@@ -265,12 +279,23 @@ const deleteRefsInChunks = async (database, refs) => {
 };
 
 export default function App() {
-  const mediaPreviewMode =
-    import.meta.env.DEV &&
-    new URLSearchParams(window.location.search).get("preview") === "media";
-  const previewUser = mediaPreviewMode
+  const previewName = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("preview")
+    : "";
+  const mediaPreviewMode = previewName === "media";
+  const callPreviewMode = previewName === "call";
+  const localPreviewMode = mediaPreviewMode || callPreviewMode;
+  const previewConnection = callPreviewMode
     ? {
-        uid: "local-media-preview",
+        uid: "local-call-friend",
+        displayName: "Aarav Sharma",
+        username: "aarav_writes",
+        photoURL: "",
+      }
+    : null;
+  const previewUser = localPreviewMode
+    ? {
+        uid: "local-feature-preview",
         displayName: "Preview Writer",
         email: "preview@example.com",
         photoURL: "",
@@ -284,7 +309,7 @@ export default function App() {
           displayName: previewUser.displayName,
           username: "preview_writer",
           usernameLower: "preview_writer",
-          bio: "Local media layout preview",
+          bio: "Local feature preview",
           photoURL: "",
         }
       : null,
@@ -292,25 +317,51 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [likes, setLikes] = useState([]);
-  const [people, setPeople] = useState([]);
-  const [outgoing, setOutgoing] = useState([]);
+  const [people, setPeople] = useState(
+    previewConnection ? [previewConnection] : [],
+  );
+  const [outgoing, setOutgoing] = useState(
+    previewConnection
+      ? [
+          {
+            id: "preview-connection",
+            from: previewUser.uid,
+            to: previewConnection.uid,
+            status: "accepted",
+          },
+        ]
+      : [],
+  );
   const [incoming, setIncoming] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(
+    callPreviewMode
+      ? [
+          {
+            id: "preview-text",
+            senderId: previewConnection.uid,
+            receiverId: previewUser.uid,
+            messageType: "text",
+            text: "Want to discuss your latest story?",
+          },
+        ]
+      : [],
+  );
   const [category, setCategory] = useState("All stories");
   const [search, setSearch] = useState("");
   const [composerOpen, setComposerOpen] = useState(false);
-  const [socialOpen, setSocialOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(callPreviewMode);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [mediaPreparing, setMediaPreparing] = useState(false);
   const [storyPublishing, setStoryPublishing] = useState(false);
+  const [callStarting, setCallStarting] = useState(false);
   const [postToDelete, setPostToDelete] = useState(null);
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
   const [accountDeleteText, setAccountDeleteText] = useState("");
   const [accountDeleting, setAccountDeleting] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState("");
-  const [activeChat, setActiveChat] = useState(null);
+  const [activeChat, setActiveChat] = useState(previewConnection);
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState(null);
   const [notice, setNotice] = useState("");
@@ -330,7 +381,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (mediaPreviewMode) {
+    if (localPreviewMode) {
       setAuthLoading(false);
       return;
     }
@@ -369,7 +420,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (mediaPreviewMode) return;
+    if (localPreviewMode) return;
     if (!user || !db) {
       setProfile(null);
       return;
@@ -403,12 +454,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (mediaPreviewMode) {
-      setPeople([]);
-      setOutgoing([]);
-      setIncoming([]);
-      return;
-    }
+    if (localPreviewMode) return;
     if (!user || !db) {
       setPeople([]);
       setOutgoing([]);
@@ -446,6 +492,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    if (callPreviewMode) return;
     if (!user || !activeChat || !db) {
       setMessages([]);
       return;
@@ -935,16 +982,87 @@ export default function App() {
   const sendMessage = async (event) => {
     event.preventDefault();
     const text = message.trim();
-    if (!text || !user || !activeChat || !db) return;
+    if (!text || !user || !activeChat) return;
+    if (callPreviewMode) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `preview-message-${Date.now()}`,
+          senderId: user.uid,
+          receiverId: activeChat.uid,
+          messageType: "text",
+          text: text.slice(0, 1000),
+        },
+      ]);
+      setMessage("");
+      return;
+    }
+    if (!db) return;
     await addDoc(collection(db, "messages"), {
       chatId: chatId(user.uid, activeChat.uid),
       senderId: user.uid,
       receiverId: activeChat.uid,
       participants: [user.uid, activeChat.uid],
+      messageType: "text",
       text: text.slice(0, 1000),
       createdAt: serverTimestamp(),
     });
     setMessage("");
+  };
+
+  const startVideoCall = async () => {
+    if (!user || !activeChat || callStarting) return;
+
+    const room = createCallRoom();
+    const invitation = {
+      chatId: chatId(user.uid, activeChat.uid),
+      senderId: user.uid,
+      receiverId: activeChat.uid,
+      participants: [user.uid, activeChat.uid],
+      messageType: "video_call",
+      text: `${currentName} started a video call.`,
+      callRoom: room,
+    };
+
+    if (callPreviewMode) {
+      setMessages((current) => [
+        ...current,
+        { ...invitation, id: `preview-call-${Date.now()}` },
+      ]);
+      setNotice("Video call invitation ready.");
+      return;
+    }
+    if (!db) return;
+
+    const callWindow = window.open("about:blank", "_blank");
+    if (callWindow) {
+      callWindow.opener = null;
+      callWindow.document.title = "Starting Softly video call…";
+      callWindow.document.body.innerHTML =
+        '<p style="font:16px sans-serif;padding:24px">Starting your video call…</p>';
+    }
+
+    setCallStarting(true);
+    try {
+      await addDoc(collection(db, "messages"), {
+        ...invitation,
+        createdAt: serverTimestamp(),
+      });
+      if (callWindow) {
+        callWindow.location.replace(callURL(room));
+      }
+      setNotice(
+        callWindow
+          ? "Video call opened and invitation sent."
+          : "Invitation sent. Use the Join call button in chat.",
+      );
+      window.setTimeout(() => setNotice(""), 4000);
+    } catch {
+      callWindow?.close();
+      setNotice("Video call could not start. Please try again.");
+    } finally {
+      setCallStarting(false);
+    }
   };
 
   const relationship = (person) => {
@@ -1306,7 +1424,7 @@ export default function App() {
                 <div className="mediaComposerHead">
                   <div>
                     <strong>Add media</strong>
-                    <span>Optional · no paid API needed</span>
+                    <span>Optional</span>
                   </div>
                   {draft.mediaType && (
                     <button
@@ -1795,10 +1913,19 @@ export default function App() {
                 <>
                   <header className="chatHeader">
                     <ProfileAvatar person={activeChat} tone="sky" />
-                    <div>
+                    <div className="chatIdentity">
                       <strong>{activeChat.displayName}</strong>
                       <small>PRIVATE CONVERSATION</small>
                     </div>
+                    <button
+                      className="videoCallButton"
+                      type="button"
+                      onClick={startVideoCall}
+                      disabled={callStarting}
+                    >
+                      <span aria-hidden="true">◉</span>
+                      {callStarting ? "Starting…" : "Video call"}
+                    </button>
                     <button
                       className="removeConnection"
                       onClick={() => removeFollow(activeChat)}
@@ -1808,16 +1935,53 @@ export default function App() {
                   </header>
                   <div className="messageList">
                     {messages.length ? (
-                      messages.map((item) => (
-                        <div
-                          className={`messageBubble ${
-                            item.senderId === user.uid ? "mine" : ""
-                          }`}
-                          key={item.id}
-                        >
-                          {item.text}
-                        </div>
-                      ))
+                      messages.map((item) =>
+                        item.messageType === "video_call" &&
+                        item.callRoom ? (
+                          <article
+                            className={`callInvitation ${
+                              item.senderId === user.uid ? "mine" : ""
+                            }`}
+                            key={item.id}
+                          >
+                            <div className="callInvitationIcon" aria-hidden="true">
+                              ◉
+                            </div>
+                            <div>
+                              <small>
+                                {item.senderId === user.uid
+                                  ? "YOU STARTED A CALL"
+                                  : "VIDEO CALL INVITATION"}
+                              </small>
+                              <strong>
+                                {item.senderId === user.uid
+                                  ? `Waiting for ${activeChat.displayName}`
+                                  : `${activeChat.displayName} invited you`}
+                              </strong>
+                              <p>
+                                Camera and microphone permissions are requested
+                                after you join.
+                              </p>
+                              <a
+                                href={callURL(item.callRoom)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Join video call ↗
+                              </a>
+                            </div>
+                          </article>
+                        ) : (
+                          <div
+                            className={`messageBubble ${
+                              item.senderId === user.uid ? "mine" : ""
+                            }`}
+                            key={item.id}
+                          >
+                            {item.text}
+                          </div>
+                        ),
+                      )
                     ) : (
                       <p className="chatEmpty">
                         You’re connected. Say something thoughtful.

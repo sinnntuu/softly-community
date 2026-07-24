@@ -179,9 +179,23 @@ service cloud.firestore {
         && request.resource.data.participants.size() == 2
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.receiverId in request.resource.data.participants
+        && request.resource.data.messageType in ["text", "video_call"]
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 1000
+        && (
+          (
+            request.resource.data.messageType == "text"
+            && !request.resource.data.keys().hasAny(["callRoom"])
+          )
+          || (
+            request.resource.data.messageType == "video_call"
+            && request.resource.data.callRoom is string
+            && request.resource.data.callRoom.size() >= 20
+            && request.resource.data.callRoom.size() <= 100
+            && request.resource.data.callRoom.matches("^[A-Za-z0-9-]+$")
+          )
+        )
         && isConnected(
           request.resource.data.senderId,
           request.resource.data.receiverId
