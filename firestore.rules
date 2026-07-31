@@ -40,6 +40,8 @@ service cloud.firestore {
           "email",
           "photoURL",
           "bio",
+          "location",
+          "website",
           "username",
           "usernameLower",
           "joinedAt",
@@ -56,6 +58,14 @@ service cloud.firestore {
         && (!request.resource.data.keys().hasAny(["photoURL"])
           || (request.resource.data.photoURL is string
             && request.resource.data.photoURL.size() <= 180000))
+        && (!request.resource.data.keys().hasAny(["location"])
+          || (request.resource.data.location is string
+            && request.resource.data.location.size() <= 80))
+        && (!request.resource.data.keys().hasAny(["website"])
+          || (request.resource.data.website is string
+            && request.resource.data.website.size() <= 300
+            && (request.resource.data.website == ""
+              || request.resource.data.website.matches("^https://.*"))))
         && validUsername(userId);
     }
 
@@ -146,6 +156,61 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.postId is string
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() >= 2
+        && request.resource.data.authorName.size() <= 50
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 500
+        && exists(
+          /databases/$(database)/documents/posts/$(request.resource.data.postId)
+        );
+      allow delete: if signedIn() && (
+        resource.data.authorId == request.auth.uid
+        || (
+          exists(/databases/$(database)/documents/posts/$(resource.data.postId))
+          && get(
+            /databases/$(database)/documents/posts/$(resource.data.postId)
+          ).data.authorId == request.auth.uid
+        )
+      );
+      allow update: if false;
+    }
+
+    match /bookmarks/{bookmarkId} {
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || (
+          exists(/databases/$(database)/documents/posts/$(resource.data.postId))
+          && get(
+            /databases/$(database)/documents/posts/$(resource.data.postId)
+          ).data.authorId == request.auth.uid
+        )
+      );
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.postId is string
+        && bookmarkId == request.resource.data.postId + "_" + request.auth.uid
+        && exists(
+          /databases/$(database)/documents/posts/$(request.resource.data.postId)
+        );
+      allow delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || (
+          exists(/databases/$(database)/documents/posts/$(resource.data.postId))
+          && get(
+            /databases/$(database)/documents/posts/$(resource.data.postId)
+          ).data.authorId == request.auth.uid
+        )
+      );
+      allow update: if false;
+    }
+
     match /follows/{followId} {
       allow read: if signedIn()
         && (
@@ -179,21 +244,40 @@ service cloud.firestore {
         && request.resource.data.participants.size() == 2
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.receiverId in request.resource.data.participants
-        && request.resource.data.messageType in ["text", "video_call"]
+        && request.resource.data.messageType in [
+          "text", "video_call", "audio_call", "photo", "video", "link"
+        ]
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 1000
         && (
           (
             request.resource.data.messageType == "text"
-            && !request.resource.data.keys().hasAny(["callRoom"])
+            && !request.resource.data.keys().hasAny(["callRoom", "mediaURL"])
           )
           || (
-            request.resource.data.messageType == "video_call"
+            request.resource.data.messageType in ["video_call", "audio_call"]
             && request.resource.data.callRoom is string
             && request.resource.data.callRoom.size() >= 20
             && request.resource.data.callRoom.size() <= 100
             && request.resource.data.callRoom.matches("^[A-Za-z0-9-]+$")
+            && !request.resource.data.keys().hasAny(["mediaURL"])
+          )
+          || (
+            request.resource.data.messageType == "photo"
+            && request.resource.data.mediaURL is string
+            && request.resource.data.mediaURL.size() <= 500000
+            && request.resource.data.mediaURL.matches(
+              "^data:image/(jpeg|png|webp);base64,.*"
+            )
+            && !request.resource.data.keys().hasAny(["callRoom"])
+          )
+          || (
+            request.resource.data.messageType in ["video", "link"]
+            && request.resource.data.mediaURL is string
+            && request.resource.data.mediaURL.size() <= 1000
+            && request.resource.data.mediaURL.matches("^https://.*")
+            && !request.resource.data.keys().hasAny(["callRoom"])
           )
         )
         && isConnected(

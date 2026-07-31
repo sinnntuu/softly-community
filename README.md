@@ -1,8 +1,8 @@
 # Softly — social blogging platform
 
 A portfolio-ready social publishing app with Google login, public blog posts,
-likes, editable profiles, unique usernames, profile photos, people search,
-follow requests, connections, and private real-time chat.
+comments, likes, bookmarks, rich profiles, smart discovery, follow requests,
+notifications, connections, and private real-time chat.
 
 ## Current features
 
@@ -11,11 +11,16 @@ follow requests, connections, and private real-time chat.
 - Add a compressed story photo without paid storage
 - Share YouTube, Vimeo, Google Drive, MP4, WebM, or OGG videos
 - Real-time likes
+- Story comments, sharing and personal bookmarks
+- Latest, popular and saved feed filters with search suggestions
 - Owner-only story deletion with like cleanup
-- Editable display name, unique `@username`, bio, and compressed profile photo
+- Editable display name, unique `@username`, bio, location, website, and profile photo
 - Find people by username or display name
 - Follow requests, connections, and private real-time chat
-- Video-call invitations inside private chat using Jitsi Meet
+- Notifications for follows, likes, comments, messages and call invitations
+- Instagram-style chat sharing for secure links, compressed photos and videos
+- Audio and video-call invitations inside private chat using Jitsi Meet
+- Clearly accessible logout and a complete responsive footer
 - Re-authenticated account deletion with related-data cleanup
 - Responsive neomorphic design
 - Firestore rules that protect profiles and reserve usernames atomically

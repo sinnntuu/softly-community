@@ -46,8 +46,27 @@ const initials = (name = "Softly writer") =>
 
 const timeValue = (value) => value?.toMillis?.() ?? 0;
 const chatId = (a, b) => [a, b].sort().join("_");
-const callURL = (room) =>
-  `https://meet.jit.si/${encodeURIComponent(room)}`;
+const callURL = (room, type = "video") => {
+  const base = `https://meet.jit.si/${encodeURIComponent(room)}`;
+  return type === "audio"
+    ? `${base}#config.startAudioOnly=true&config.startWithVideoMuted=true`
+    : base;
+};
+const safeHTTPSURL = (value) => {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+};
+const linkHost = (value) => {
+  try {
+    return new URL(value).hostname.replace(/^www\./, "");
+  } catch {
+    return "Shared link";
+  }
+};
 const createCallRoom = () => {
   if (globalThis.crypto?.getRandomValues) {
     const values = new Uint32Array(4);
@@ -293,6 +312,19 @@ export default function App() {
         photoURL: "",
       }
     : null;
+  const previewMessages = callPreviewMode
+    ? [
+        {
+          id: "preview-text",
+          senderId: previewConnection.uid,
+          receiverId: "local-feature-preview",
+          participants: [previewConnection.uid, "local-feature-preview"],
+          messageType: "text",
+          text: "Want to discuss your latest story?",
+          createdAt: { toMillis: () => Date.now() - 120000 },
+        },
+      ]
+    : [];
   const previewUser = localPreviewMode
     ? {
         uid: "local-feature-preview",
@@ -317,6 +349,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [likes, setLikes] = useState([]);
+  const [comments, setComments] = useState([]);
+  const [bookmarks, setBookmarks] = useState([]);
   const [people, setPeople] = useState(
     previewConnection ? [previewConnection] : [],
   );
@@ -333,28 +367,21 @@ export default function App() {
       : [],
   );
   const [incoming, setIncoming] = useState([]);
-  const [messages, setMessages] = useState(
-    callPreviewMode
-      ? [
-          {
-            id: "preview-text",
-            senderId: previewConnection.uid,
-            receiverId: previewUser.uid,
-            messageType: "text",
-            text: "Want to discuss your latest story?",
-          },
-        ]
-      : [],
-  );
+  const [messages, setMessages] = useState(previewMessages);
+  const [allMessages, setAllMessages] = useState(previewMessages);
   const [category, setCategory] = useState("All stories");
   const [search, setSearch] = useState("");
+  const [feedMode, setFeedMode] = useState("Latest");
+  const [commentDrafts, setCommentDrafts] = useState({});
   const [composerOpen, setComposerOpen] = useState(false);
   const [socialOpen, setSocialOpen] = useState(callPreviewMode);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [mediaPreparing, setMediaPreparing] = useState(false);
   const [storyPublishing, setStoryPublishing] = useState(false);
-  const [callStarting, setCallStarting] = useState(false);
+  const [callStarting, setCallStarting] = useState("");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [seenNotifications, setSeenNotifications] = useState([]);
   const [postToDelete, setPostToDelete] = useState(null);
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
@@ -363,6 +390,12 @@ export default function App() {
   const [peopleSearch, setPeopleSearch] = useState("");
   const [activeChat, setActiveChat] = useState(previewConnection);
   const [message, setMessage] = useState("");
+  const [attachmentOpen, setAttachmentOpen] = useState(false);
+  const [attachmentPreparing, setAttachmentPreparing] = useState(false);
+  const [chatAttachment, setChatAttachment] = useState({
+    type: "link",
+    url: "",
+  });
   const [expanded, setExpanded] = useState(null);
   const [notice, setNotice] = useState("");
   const [draft, setDraft] = useState({
@@ -377,6 +410,8 @@ export default function App() {
     displayName: "",
     username: "",
     bio: "",
+    location: "",
+    website: "",
     photoURL: "",
   });
 
@@ -447,11 +482,48 @@ export default function App() {
     const stopLikes = onSnapshot(collection(db, "likes"), (snapshot) => {
       setLikes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
     });
+    const stopComments = onSnapshot(collection(db, "comments"), (snapshot) => {
+      setComments(
+        snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+      );
+    });
     return () => {
       stopPosts();
       stopLikes();
+      stopComments();
     };
   }, []);
+
+  useEffect(() => {
+    if (localPreviewMode) return;
+    if (!user || !db) {
+      setBookmarks([]);
+      setAllMessages([]);
+      return;
+    }
+    const stopBookmarks = onSnapshot(
+      query(collection(db, "bookmarks"), where("userId", "==", user.uid)),
+      (snapshot) =>
+        setBookmarks(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        ),
+    );
+    const stopMessages = onSnapshot(
+      query(
+        collection(db, "messages"),
+        where("participants", "array-contains", user.uid),
+        limit(100),
+      ),
+      (snapshot) =>
+        setAllMessages(
+          snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+        ),
+    );
+    return () => {
+      stopBookmarks();
+      stopMessages();
+    };
+  }, [user]);
 
   useEffect(() => {
     if (localPreviewMode) return;
@@ -525,17 +597,30 @@ export default function App() {
 
   const visiblePosts = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return posts.filter((post) => {
+    const savedIds = new Set(bookmarks.map((item) => item.postId));
+    const matches = posts.filter((post) => {
       const categoryMatch =
         category === "All stories" || post.category === category;
       const searchMatch =
         !term ||
-        `${post.title} ${post.excerpt} ${post.authorName}`
+        `${post.title} ${post.excerpt} ${post.body} ${post.category} ${post.authorName}`
           .toLowerCase()
           .includes(term);
-      return categoryMatch && searchMatch;
+      const savedMatch = feedMode !== "Saved" || savedIds.has(post.id);
+      return categoryMatch && searchMatch && savedMatch;
     });
-  }, [posts, search, category]);
+    if (feedMode === "Popular") {
+      return [...matches].sort(
+        (a, b) =>
+          (likesByPost[b.id]?.length || 0) -
+            (likesByPost[a.id]?.length || 0) ||
+          timeValue(b.createdAt) - timeValue(a.createdAt),
+      );
+    }
+    return [...matches].sort(
+      (a, b) => timeValue(b.createdAt) - timeValue(a.createdAt),
+    );
+  }, [posts, search, category, feedMode, bookmarks, likesByPost]);
 
   const connections = useMemo(() => {
     const ids = new Set([
@@ -572,6 +657,153 @@ export default function App() {
         : null,
     [draft.mediaType, draft.mediaURL],
   );
+  const commentsByPost = useMemo(() => {
+    const result = {};
+    for (const comment of comments) {
+      result[comment.postId] ??= [];
+      result[comment.postId].push(comment);
+    }
+    Object.values(result).forEach((items) =>
+      items.sort((a, b) => timeValue(a.createdAt) - timeValue(b.createdAt)),
+    );
+    return result;
+  }, [comments]);
+  const bookmarkedPostIds = useMemo(
+    () => new Set(bookmarks.map((item) => item.postId)),
+    [bookmarks],
+  );
+  const notificationItems = useMemo(() => {
+    if (!user) return [];
+    const personFor = (uid) =>
+      uid === user.uid ? profile : people.find((person) => person.uid === uid);
+    const ownedPosts = new Map(
+      posts.filter((post) => post.authorId === user.uid).map((post) => [post.id, post]),
+    );
+    const items = [];
+
+    incomingRequests.forEach((request) => {
+      const person = personFor(request.from);
+      items.push({
+        id: `follow-${request.id}`,
+        type: "follow",
+        actorId: request.from,
+        title: `${person?.displayName || request.fromName || "A writer"} wants to follow you`,
+        detail: "Review the follow request.",
+        createdAt: request.createdAt,
+      });
+    });
+    outgoing
+      .filter((request) => request.status === "accepted")
+      .forEach((request) => {
+        const person = personFor(request.to);
+        items.push({
+          id: `connected-${request.id}`,
+          type: "message",
+          actorId: request.to,
+          title: `${person?.displayName || request.toName || "A writer"} accepted your follow request`,
+          detail: "You can now start a private conversation.",
+          createdAt: request.updatedAt,
+        });
+      });
+    likes.forEach((like) => {
+      const post = ownedPosts.get(like.postId);
+      if (!post || like.userId === user.uid) return;
+      const person = personFor(like.userId);
+      items.push({
+        id: `like-${like.id}`,
+        type: "post",
+        postId: like.postId,
+        title: `${person?.displayName || "Someone"} liked your story`,
+        detail: post.title,
+        createdAt: like.createdAt,
+      });
+    });
+    comments.forEach((comment) => {
+      const post = ownedPosts.get(comment.postId);
+      if (!post || comment.authorId === user.uid) return;
+      items.push({
+        id: `comment-${comment.id}`,
+        type: "post",
+        postId: comment.postId,
+        title: `${comment.authorName || "Someone"} commented on your story`,
+        detail: comment.text,
+        createdAt: comment.createdAt,
+      });
+    });
+    allMessages.forEach((item) => {
+      if (item.receiverId !== user.uid || item.senderId === user.uid) return;
+      const person = personFor(item.senderId);
+      const descriptions = {
+        video_call: "invited you to a video call",
+        audio_call: "invited you to an audio call",
+        photo: "shared a photo",
+        video: "shared a video",
+        link: "shared a link",
+        text: `sent: ${item.text || "a message"}`,
+      };
+      items.push({
+        id: `message-${item.id}`,
+        type: "message",
+        actorId: item.senderId,
+        title: `${person?.displayName || "Someone"} ${descriptions[item.messageType] || "sent a message"}`,
+        detail: "Open your private conversation.",
+        createdAt: item.createdAt,
+      });
+    });
+    return items
+      .sort((a, b) => timeValue(b.createdAt) - timeValue(a.createdAt))
+      .slice(0, 24);
+  }, [user, profile, people, posts, likes, comments, allMessages, incomingRequests, outgoing]);
+  const unreadNotifications = notificationItems.filter(
+    (item) => !seenNotifications.includes(item.id),
+  ).length;
+  const searchSuggestions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (term.length < 2) return [];
+    const values = new Set();
+    posts.forEach((post) => {
+      [post.title, post.authorName, post.category].forEach((value) => {
+        if (value?.toLowerCase().includes(term)) values.add(value);
+      });
+    });
+    people.forEach((person) => {
+      [person.displayName, person.username ? `@${person.username}` : ""].forEach(
+        (value) => {
+          if (value?.toLowerCase().includes(term)) values.add(value);
+        },
+      );
+    });
+    return [...values].slice(0, 6);
+  }, [search, posts, people]);
+
+  const openNotifications = () => {
+    setNotificationsOpen(true);
+    setSeenNotifications(notificationItems.map((item) => item.id));
+  };
+
+  const openNotification = (item) => {
+    setNotificationsOpen(false);
+    if (item.type === "post") {
+      setExpanded(item.postId);
+      document.getElementById("stories")?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    setSocialOpen(true);
+    if (item.type === "message") {
+      setActiveChat(people.find((person) => person.uid === item.actorId) || null);
+    }
+  };
+
+  const logout = async () => {
+    setNotificationsOpen(false);
+    setSocialOpen(false);
+    setProfileOpen(false);
+    if (localPreviewMode) {
+      setNotice("Logout control is ready.");
+      return;
+    }
+    if (auth) await signOut(auth);
+  };
 
   const login = async () => {
     if (!auth) return;
@@ -605,6 +837,8 @@ export default function App() {
       displayName: currentName,
       username: profile?.username || "",
       bio: profile?.bio || "",
+      location: profile?.location || "",
+      website: profile?.website || "",
       photoURL: currentPhoto,
     });
     setProfileOpen(true);
@@ -632,6 +866,10 @@ export default function App() {
       .toLowerCase()
       .replace(/^@/, "");
     const bio = profileDraft.bio.trim();
+    const location = profileDraft.location.trim().slice(0, 80);
+    const website = profileDraft.website.trim()
+      ? safeHTTPSURL(profileDraft.website)
+      : "";
 
     if (displayName.length < 2 || displayName.length > 50) {
       setNotice("Display name must be between 2 and 50 characters.");
@@ -639,6 +877,10 @@ export default function App() {
     }
     if (!usernamePattern.test(username)) {
       setNotice("Username needs 3–20 lowercase letters, numbers or _ only.");
+      return;
+    }
+    if (profileDraft.website.trim() && !website) {
+      setNotice("Website must be a secure https:// link.");
       return;
     }
 
@@ -677,6 +919,8 @@ export default function App() {
             username,
             usernameLower: username,
             bio: bio.slice(0, 220),
+            location,
+            website,
             photoURL: profileDraft.photoURL || "",
             email: user.email || "",
             updatedAt: serverTimestamp(),
@@ -793,6 +1037,65 @@ export default function App() {
     }
   };
 
+  const toggleBookmark = async (postId) => {
+    if (!user || !db) {
+      login();
+      return;
+    }
+    const id = `${postId}_${user.uid}`;
+    if (bookmarkedPostIds.has(postId)) {
+      await deleteDoc(doc(db, "bookmarks", id));
+      setNotice("Removed from bookmarks.");
+    } else {
+      await setDoc(doc(db, "bookmarks", id), {
+        postId,
+        userId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      setNotice("Story bookmarked.");
+    }
+    window.setTimeout(() => setNotice(""), 2400);
+  };
+
+  const addComment = async (event, postId) => {
+    event.preventDefault();
+    const text = (commentDrafts[postId] || "").trim();
+    if (!user || !db) {
+      login();
+      return;
+    }
+    if (!text) return;
+    await addDoc(collection(db, "comments"), {
+      postId,
+      authorId: user.uid,
+      authorName: currentName,
+      authorPhoto: currentPhoto,
+      text: text.slice(0, 500),
+      createdAt: serverTimestamp(),
+    });
+    setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+  };
+
+  const deleteComment = async (comment) => {
+    if (!user || !db || comment.authorId !== user.uid) return;
+    await deleteDoc(doc(db, "comments", comment.id));
+  };
+
+  const shareStory = async (post) => {
+    const url = `${window.location.origin}${window.location.pathname}#story-${post.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: post.title, text: post.excerpt, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setNotice("Story link copied.");
+        window.setTimeout(() => setNotice(""), 2400);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") setNotice("Story could not be shared.");
+    }
+  };
+
   const deletePost = async () => {
     if (
       !postToDelete ||
@@ -806,15 +1109,16 @@ export default function App() {
 
     setPostDeleting(true);
     try {
-      const postLikes = await getDocs(
-        query(
-          collection(db, "likes"),
-          where("postId", "==", postToDelete.id),
-        ),
-      );
+      const [postLikes, postComments, postBookmarks] = await Promise.all([
+        getDocs(query(collection(db, "likes"), where("postId", "==", postToDelete.id))),
+        getDocs(query(collection(db, "comments"), where("postId", "==", postToDelete.id))),
+        getDocs(query(collection(db, "bookmarks"), where("postId", "==", postToDelete.id))),
+      ]);
       await deleteRefsInChunks(
         db,
-        postLikes.docs.map((item) => item.ref),
+        [...postLikes.docs, ...postComments.docs, ...postBookmarks.docs].map(
+          (item) => item.ref,
+        ),
       );
       await deleteDoc(doc(db, "posts", postToDelete.id));
       setPostToDelete(null);
@@ -856,6 +1160,8 @@ export default function App() {
         sentFollows,
         receivedFollows,
         accountMessages,
+        ownComments,
+        ownBookmarks,
       ] = await Promise.all([
         getDocs(
           query(collection(db, "posts"), where("authorId", "==", user.uid)),
@@ -875,6 +1181,12 @@ export default function App() {
             where("participants", "array-contains", user.uid),
           ),
         ),
+        getDocs(
+          query(collection(db, "comments"), where("authorId", "==", user.uid)),
+        ),
+        getDocs(
+          query(collection(db, "bookmarks"), where("userId", "==", user.uid)),
+        ),
       ]);
 
       const likesOnAuthoredPosts = await Promise.all(
@@ -887,13 +1199,41 @@ export default function App() {
           ),
         ),
       );
+      const commentsOnAuthoredPosts = await Promise.all(
+        authoredPosts.docs.map((postItem) =>
+          getDocs(
+            query(
+              collection(db, "comments"),
+              where("postId", "==", postItem.id),
+            ),
+          ),
+        ),
+      );
+      const bookmarksOnAuthoredPosts = await Promise.all(
+        authoredPosts.docs.map((postItem) =>
+          getDocs(
+            query(
+              collection(db, "bookmarks"),
+              where("postId", "==", postItem.id),
+            ),
+          ),
+        ),
+      );
 
       const relatedRefs = [
         ...ownLikes.docs.map((item) => item.ref),
         ...sentFollows.docs.map((item) => item.ref),
         ...receivedFollows.docs.map((item) => item.ref),
         ...accountMessages.docs.map((item) => item.ref),
+        ...ownComments.docs.map((item) => item.ref),
+        ...ownBookmarks.docs.map((item) => item.ref),
         ...likesOnAuthoredPosts.flatMap((snapshot) =>
+          snapshot.docs.map((item) => item.ref),
+        ),
+        ...commentsOnAuthoredPosts.flatMap((snapshot) =>
+          snapshot.docs.map((item) => item.ref),
+        ),
+        ...bookmarksOnAuthoredPosts.flatMap((snapshot) =>
           snapshot.docs.map((item) => item.ref),
         ),
       ];
@@ -984,16 +1324,17 @@ export default function App() {
     const text = message.trim();
     if (!text || !user || !activeChat) return;
     if (callPreviewMode) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: `preview-message-${Date.now()}`,
-          senderId: user.uid,
-          receiverId: activeChat.uid,
-          messageType: "text",
-          text: text.slice(0, 1000),
-        },
-      ]);
+      const preview = {
+        id: `preview-message-${Date.now()}`,
+        senderId: user.uid,
+        receiverId: activeChat.uid,
+        participants: [user.uid, activeChat.uid],
+        messageType: "text",
+        text: text.slice(0, 1000),
+        createdAt: { toMillis: () => Date.now() },
+      };
+      setMessages((current) => [...current, preview]);
+      setAllMessages((current) => [...current, preview]);
       setMessage("");
       return;
     }
@@ -1010,26 +1351,88 @@ export default function App() {
     setMessage("");
   };
 
-  const startVideoCall = async () => {
+  const chooseChatPhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setAttachmentPreparing(true);
+    try {
+      const url = await compressStoryPhoto(file);
+      setChatAttachment({ type: "photo", url });
+    } catch (error) {
+      setNotice(error.message || "Photo could not be prepared.");
+    } finally {
+      setAttachmentPreparing(false);
+    }
+  };
+
+  const sendChatAttachment = async (event) => {
+    event.preventDefault();
+    if (!user || !activeChat || attachmentPreparing) return;
+    const type = chatAttachment.type;
+    const mediaURL =
+      type === "photo"
+        ? chatAttachment.url
+        : safeHTTPSURL(chatAttachment.url || "");
+    if (!mediaURL) {
+      setNotice("Please add a valid secure link.");
+      return;
+    }
+    if (type === "video" && !getVideoDetails(mediaURL)) {
+      setNotice("Use a YouTube, Vimeo, Google Drive or direct video link.");
+      return;
+    }
+    const sharedMessage = {
+      chatId: chatId(user.uid, activeChat.uid),
+      senderId: user.uid,
+      receiverId: activeChat.uid,
+      participants: [user.uid, activeChat.uid],
+      messageType: type,
+      mediaURL,
+      text: `Shared a ${type}.`,
+    };
+    if (callPreviewMode) {
+      const preview = {
+        ...sharedMessage,
+        id: `preview-attachment-${Date.now()}`,
+        createdAt: { toMillis: () => Date.now() },
+      };
+      setMessages((current) => [...current, preview]);
+      setAllMessages((current) => [...current, preview]);
+    } else if (db) {
+      await addDoc(collection(db, "messages"), {
+        ...sharedMessage,
+        createdAt: serverTimestamp(),
+      });
+    }
+    setChatAttachment({ type: "link", url: "" });
+    setAttachmentOpen(false);
+  };
+
+  const startCall = async (type) => {
     if (!user || !activeChat || callStarting) return;
 
     const room = createCallRoom();
+    const isAudio = type === "audio";
     const invitation = {
       chatId: chatId(user.uid, activeChat.uid),
       senderId: user.uid,
       receiverId: activeChat.uid,
       participants: [user.uid, activeChat.uid],
-      messageType: "video_call",
-      text: `${currentName} started a video call.`,
+      messageType: isAudio ? "audio_call" : "video_call",
+      text: `${currentName} started an ${isAudio ? "audio" : "video"} call.`,
       callRoom: room,
     };
 
     if (callPreviewMode) {
-      setMessages((current) => [
-        ...current,
-        { ...invitation, id: `preview-call-${Date.now()}` },
-      ]);
-      setNotice("Video call invitation ready.");
+      const preview = {
+          ...invitation,
+          id: `preview-call-${Date.now()}`,
+          createdAt: { toMillis: () => Date.now() },
+        };
+      setMessages((current) => [...current, preview]);
+      setAllMessages((current) => [...current, preview]);
+      setNotice(`${isAudio ? "Audio" : "Video"} call invitation ready.`);
       return;
     }
     if (!db) return;
@@ -1037,33 +1440,36 @@ export default function App() {
     const callWindow = window.open("about:blank", "_blank");
     if (callWindow) {
       callWindow.opener = null;
-      callWindow.document.title = "Starting Softly video call…";
+      callWindow.document.title = `Starting Softly ${type} call…`;
       callWindow.document.body.innerHTML =
-        '<p style="font:16px sans-serif;padding:24px">Starting your video call…</p>';
+        `<p style="font:16px sans-serif;padding:24px">Starting your ${type} call…</p>`;
     }
 
-    setCallStarting(true);
+    setCallStarting(type);
     try {
       await addDoc(collection(db, "messages"), {
         ...invitation,
         createdAt: serverTimestamp(),
       });
       if (callWindow) {
-        callWindow.location.replace(callURL(room));
+        callWindow.location.replace(callURL(room, type));
       }
       setNotice(
         callWindow
-          ? "Video call opened and invitation sent."
+          ? `${isAudio ? "Audio" : "Video"} call opened and invitation sent.`
           : "Invitation sent. Use the Join call button in chat.",
       );
       window.setTimeout(() => setNotice(""), 4000);
     } catch {
       callWindow?.close();
-      setNotice("Video call could not start. Please try again.");
+      setNotice(`${isAudio ? "Audio" : "Video"} call could not start.`);
     } finally {
-      setCallStarting(false);
+      setCallStarting("");
     }
   };
+
+  const startVideoCall = () => startCall("video");
+  const startAudioCall = () => startCall("audio");
 
   const relationship = (person) => {
     const sent = outgoing.find((item) => item.to === person.uid);
@@ -1114,6 +1520,17 @@ export default function App() {
           {user ? (
             <div className="account">
               <button
+                className="notificationBell"
+                onClick={openNotifications}
+                aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} new` : ""}`}
+                title="Notifications"
+              >
+                🔔
+                {unreadNotifications > 0 && (
+                  <span>{Math.min(unreadNotifications, 9)}</span>
+                )}
+              </button>
+              <button
                 className="accountProfile"
                 onClick={openProfileEditor}
                 title="Edit your profile"
@@ -1124,8 +1541,8 @@ export default function App() {
                 />
                 <span className="accountName">{currentName}</span>
               </button>
-              <button className="signOut" onClick={() => signOut(auth)}>
-                Sign out
+              <button className="signOut" onClick={logout}>
+                Log out
               </button>
             </div>
           ) : (
@@ -1136,6 +1553,58 @@ export default function App() {
           )}
         </div>
       </nav>
+
+      {notificationsOpen && user && (
+        <div
+          className="notificationBackdrop"
+          onClick={() => setNotificationsOpen(false)}
+        >
+          <section
+            className="notificationPanel"
+            aria-label="Notifications"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">ACTIVITY</p>
+                <h2>Notifications</h2>
+              </div>
+              <button
+                className="modalClose"
+                onClick={() => setNotificationsOpen(false)}
+                aria-label="Close notifications"
+              >
+                ×
+              </button>
+            </header>
+            <div className="notificationList">
+              {notificationItems.length ? (
+                notificationItems.map((item) => (
+                  <button key={item.id} onClick={() => openNotification(item)}>
+                    <span className={`notificationIcon ${item.type}`}>
+                      {item.type === "follow"
+                        ? "+"
+                        : item.type === "message"
+                          ? "↗"
+                          : "♥"}
+                    </span>
+                    <span>
+                      <strong>{item.title}</strong>
+                      <small>{item.detail}</small>
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="notificationEmpty">
+                  <span>♡</span>
+                  <strong>You’re all caught up</strong>
+                  <p>New follows, comments, likes and messages appear here.</p>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       <section className="communityHero shell" id="top">
         <div className="heroCopy">
@@ -1186,26 +1655,54 @@ export default function App() {
               placeholder="Search stories or writers"
             />
             <span>⌕</span>
+            {searchSuggestions.length > 0 && (
+              <div className="searchSuggestions">
+                {searchSuggestions.map((item) => (
+                  <button key={item} onClick={() => setSearch(item)}>
+                    <span>⌕</span> {item}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="filters">
-          {categories.map((item) => (
-            <button
-              key={item}
-              className={category === item ? "active" : ""}
-              onClick={() => setCategory(item)}
-            >
-              {item}
-            </button>
-          ))}
+        <div className="discoveryControls">
+          <div className="filters" aria-label="Story categories">
+            {categories.map((item) => (
+              <button
+                key={item}
+                className={category === item ? "active" : ""}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <div className="feedModes" aria-label="Feed order">
+            {["Latest", "Popular", "Saved"].map((item) => (
+              <button
+                key={item}
+                className={feedMode === item ? "active" : ""}
+                onClick={() =>
+                  item === "Saved"
+                    ? requireUser(() => setFeedMode(item))
+                    : setFeedMode(item)
+                }
+              >
+                {item === "Saved" ? "◆ Saved" : item}
+              </button>
+            ))}
+          </div>
         </div>
 
         {visiblePosts.length ? (
           <div className="storyGrid">
             {visiblePosts.map((post, index) => {
               const postLikes = likesByPost[post.id] || [];
+              const postComments = commentsByPost[post.id] || [];
               const liked = user ? postLikes.includes(user.uid) : false;
+              const bookmarked = bookmarkedPostIds.has(post.id);
               const liveAuthor =
                 post.authorId === user?.uid
                   ? profile
@@ -1223,7 +1720,7 @@ export default function App() {
                   ? post.mediaURL
                   : videoDetails?.thumbnail || "";
               return (
-                <article className="storyCard" key={post.id}>
+                <article className="storyCard" id={`story-${post.id}`} key={post.id}>
                   <div
                     className={`storyArt ${tones[index % 3]} ${
                       mediaThumbnail ? "hasMedia" : ""
@@ -1278,6 +1775,55 @@ export default function App() {
                           />
                         )}
                         <p className="fullStory">{post.body}</p>
+                        <section className="commentSection">
+                          <header>
+                            <strong>Conversation</strong>
+                            <span>{postComments.length} comments</span>
+                          </header>
+                          {postComments.length > 0 && (
+                            <div className="commentList">
+                              {postComments.map((comment) => (
+                                <article key={comment.id}>
+                                  <ProfileAvatar
+                                    person={{
+                                      displayName: comment.authorName,
+                                      photoURL: comment.authorPhoto,
+                                    }}
+                                    tone="sage"
+                                  />
+                                  <div>
+                                    <strong>{comment.authorName}</strong>
+                                    <p>{comment.text}</p>
+                                  </div>
+                                  {comment.authorId === user?.uid && (
+                                    <button
+                                      onClick={() => deleteComment(comment)}
+                                      aria-label="Delete comment"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </article>
+                              ))}
+                            </div>
+                          )}
+                          <form onSubmit={(event) => addComment(event, post.id)}>
+                            <input
+                              value={commentDrafts[post.id] || ""}
+                              onChange={(event) =>
+                                setCommentDrafts((current) => ({
+                                  ...current,
+                                  [post.id]: event.target.value,
+                                }))
+                              }
+                              maxLength={500}
+                              placeholder={
+                                user ? "Add to the conversation…" : "Sign in to comment"
+                              }
+                            />
+                            <button>{user ? "Post" : "Sign in"}</button>
+                          </form>
+                        </section>
                       </>
                     )}
                     <button
@@ -1312,8 +1858,25 @@ export default function App() {
                       <button
                         className={`likeButton ${liked ? "liked" : ""}`}
                         onClick={() => toggleLike(post.id)}
+                        aria-label={liked ? "Unlike story" : "Like story"}
                       >
                         <span>{liked ? "♥" : "♡"}</span> {postLikes.length}
+                      </button>
+                      <button
+                        className={`bookmarkButton ${bookmarked ? "saved" : ""}`}
+                        onClick={() => toggleBookmark(post.id)}
+                        aria-label={bookmarked ? "Remove bookmark" : "Bookmark story"}
+                        title={bookmarked ? "Saved" : "Save story"}
+                      >
+                        {bookmarked ? "◆" : "◇"}
+                      </button>
+                      <button
+                        className="shareStoryButton"
+                        onClick={() => shareStory(post)}
+                        aria-label="Share story"
+                        title="Share story"
+                      >
+                        ↗
                       </button>
                     </div>
                   </div>
@@ -1354,19 +1917,43 @@ export default function App() {
         </button>
       </section>
 
-      <footer className="shell">
-        <a className="brand" href="#top">
-          softly<span>.</span>
-        </a>
-        <p>© 2026 Softly Community</p>
-        <div>
-          <a href="#stories">Stories</a>
-          <button onClick={() => requireUser(() => setSocialOpen(true))}>
-            People
-          </button>
-          <button onClick={() => requireUser(() => setComposerOpen(true))}>
-            Write
-          </button>
+      <footer className="siteFooter">
+        <div className="shell footerGrid">
+          <div className="footerBrand">
+            <a className="brand" href="#top">
+              softly<span>.</span>
+            </a>
+            <p>
+              A calm place for original ideas, meaningful stories and real
+              conversations.
+            </p>
+          </div>
+          <div>
+            <strong>Explore</strong>
+            <a href="#stories">Latest stories</a>
+            <button onClick={() => setFeedMode("Popular")}>Popular</button>
+            <button onClick={() => requireUser(() => setFeedMode("Saved"))}>
+              Bookmarks
+            </button>
+          </div>
+          <div>
+            <strong>Community</strong>
+            <button onClick={() => requireUser(() => setSocialOpen(true))}>
+              Discover people
+            </button>
+            <button onClick={() => requireUser(() => setComposerOpen(true))}>
+              Write a story
+            </button>
+            {user && <button onClick={openProfileEditor}>Your profile</button>}
+          </div>
+          <div className="footerNote">
+            <strong>Built for thoughtful voices</strong>
+            <p>Be original. Be respectful. Keep the conversation useful.</p>
+          </div>
+        </div>
+        <div className="shell footerBottom">
+          <span>© 2026 Softly Community</span>
+          <span>Made with care for writers and readers.</span>
         </div>
       </footer>
 
@@ -1632,6 +2219,35 @@ export default function App() {
                 </small>
               </label>
               <label>
+                Location
+                <input
+                  maxLength={80}
+                  value={profileDraft.location}
+                  onChange={(event) =>
+                    setProfileDraft({
+                      ...profileDraft,
+                      location: event.target.value,
+                    })
+                  }
+                  placeholder="City or country"
+                />
+              </label>
+              <label>
+                Website
+                <input
+                  type="url"
+                  maxLength={300}
+                  value={profileDraft.website}
+                  onChange={(event) =>
+                    setProfileDraft({
+                      ...profileDraft,
+                      website: event.target.value,
+                    })
+                  }
+                  placeholder="https://your-portfolio.com"
+                />
+              </label>
+              <label>
                 Bio
                 <textarea
                   maxLength={220}
@@ -1801,8 +2417,21 @@ export default function App() {
                       : "Choose your username"}
                   </small>
                   {profile?.bio && <p>{profile.bio}</p>}
+                  {(profile?.location || profile?.website) && (
+                    <div className="profileMeta">
+                      {profile.location && <span>⌖ {profile.location}</span>}
+                      {profile.website && (
+                        <a href={profile.website} target="_blank" rel="noopener noreferrer">
+                          ↗ {linkHost(profile.website)}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <button onClick={openProfileEditor}>Edit</button>
+                <div className="profileSummaryActions">
+                  <button onClick={openProfileEditor}>Edit profile</button>
+                  <button className="profileLogout" onClick={logout}>Log out</button>
+                </div>
               </div>
 
               {incomingRequests.length > 0 && (
@@ -1832,7 +2461,7 @@ export default function App() {
               )}
 
               <div className="peopleSection">
-                <h3>Discover people</h3>
+                <h3>{peopleSearch ? "Search results" : "Suggested people"}</h3>
                 <div className="peopleSearch">
                   <span>@</span>
                   <input
@@ -1917,15 +2546,28 @@ export default function App() {
                       <strong>{activeChat.displayName}</strong>
                       <small>PRIVATE CONVERSATION</small>
                     </div>
-                    <button
-                      className="videoCallButton"
-                      type="button"
-                      onClick={startVideoCall}
-                      disabled={callStarting}
-                    >
-                      <span aria-hidden="true">◉</span>
-                      {callStarting ? "Starting…" : "Video call"}
-                    </button>
+                    <div className="chatCallActions">
+                      <button
+                        className="audioCallButton"
+                        type="button"
+                        onClick={startAudioCall}
+                        disabled={Boolean(callStarting)}
+                        aria-label="Start audio call"
+                      >
+                        <span aria-hidden="true">☎</span>
+                        {callStarting === "audio" ? "Starting…" : "Audio"}
+                      </button>
+                      <button
+                        className="videoCallButton"
+                        type="button"
+                        onClick={startVideoCall}
+                        disabled={Boolean(callStarting)}
+                        aria-label="Start video call"
+                      >
+                        <span aria-hidden="true">◉</span>
+                        {callStarting === "video" ? "Starting…" : "Video"}
+                      </button>
+                    </div>
                     <button
                       className="removeConnection"
                       onClick={() => removeFollow(activeChat)}
@@ -1935,67 +2577,188 @@ export default function App() {
                   </header>
                   <div className="messageList">
                     {messages.length ? (
-                      messages.map((item) =>
-                        item.messageType === "video_call" &&
-                        item.callRoom ? (
+                      messages.map((item) => {
+                        const isCall =
+                          ["video_call", "audio_call"].includes(item.messageType) &&
+                          item.callRoom;
+                        const isMine = item.senderId === user.uid;
+                        const callType =
+                          item.messageType === "audio_call" ? "audio" : "video";
+                        if (isCall) {
+                          return (
                           <article
-                            className={`callInvitation ${
-                              item.senderId === user.uid ? "mine" : ""
-                            }`}
+                            className={`callInvitation ${isMine ? "mine" : ""}`}
                             key={item.id}
                           >
                             <div className="callInvitationIcon" aria-hidden="true">
-                              ◉
+                              {callType === "audio" ? "☎" : "◉"}
                             </div>
                             <div>
                               <small>
-                                {item.senderId === user.uid
+                                {isMine
                                   ? "YOU STARTED A CALL"
-                                  : "VIDEO CALL INVITATION"}
+                                  : `${callType.toUpperCase()} CALL INVITATION`}
                               </small>
                               <strong>
-                                {item.senderId === user.uid
+                                {isMine
                                   ? `Waiting for ${activeChat.displayName}`
                                   : `${activeChat.displayName} invited you`}
                               </strong>
                               <p>
-                                Camera and microphone permissions are requested
-                                after you join.
+                                {callType === "audio"
+                                  ? "Your camera starts off. Microphone permission is requested when you join."
+                                  : "Camera and microphone permissions are requested after you join."}
                               </p>
                               <a
-                                href={callURL(item.callRoom)}
+                                href={callURL(item.callRoom, callType)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
-                                Join video call ↗
+                                Join {callType} call ↗
                               </a>
                             </div>
                           </article>
-                        ) : (
+                          );
+                        }
+                        if (item.messageType === "photo" && item.mediaURL) {
+                          return (
+                            <article
+                              className={`chatMediaCard ${isMine ? "mine" : ""}`}
+                              key={item.id}
+                            >
+                              <img src={item.mediaURL} alt="Shared in chat" />
+                              <span>Shared photo</span>
+                            </article>
+                          );
+                        }
+                        if (item.messageType === "video" && item.mediaURL) {
+                          const details = getVideoDetails(item.mediaURL);
+                          return (
+                            <article
+                              className={`chatMediaCard chatVideoCard ${isMine ? "mine" : ""}`}
+                              key={item.id}
+                            >
+                              {details ? (
+                                <StoryVideo details={details} title="Shared video" />
+                              ) : (
+                                <a href={item.mediaURL} target="_blank" rel="noopener noreferrer">
+                                  Open shared video ↗
+                                </a>
+                              )}
+                              <span>Shared video</span>
+                            </article>
+                          );
+                        }
+                        if (item.messageType === "link" && item.mediaURL) {
+                          return (
+                            <a
+                              className={`chatLinkCard ${isMine ? "mine" : ""}`}
+                              href={item.mediaURL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              key={item.id}
+                            >
+                              <small>SHARED LINK</small>
+                              <strong>{linkHost(item.mediaURL)}</strong>
+                              <span>{item.mediaURL}</span>
+                            </a>
+                          );
+                        }
+                        return (
                           <div
-                            className={`messageBubble ${
-                              item.senderId === user.uid ? "mine" : ""
-                            }`}
+                            className={`messageBubble ${isMine ? "mine" : ""}`}
                             key={item.id}
                           >
                             {item.text}
                           </div>
-                        ),
-                      )
+                        );
+                      })
                     ) : (
                       <p className="chatEmpty">
                         You’re connected. Say something thoughtful.
                       </p>
-                    )}
+                   )}
                   </div>
+                  {attachmentOpen && (
+                    <form className="chatSharePanel" onSubmit={sendChatAttachment}>
+                      <div className="chatShareTabs">
+                        {["link", "photo", "video"].map((type) => (
+                          <button
+                            type="button"
+                            key={type}
+                            className={chatAttachment.type === type ? "active" : ""}
+                            onClick={() => setChatAttachment({ type, url: "" })}
+                          >
+                            {type === "link" ? "↗ Link" : type === "photo" ? "▣ Photo" : "▶ Video"}
+                          </button>
+                        ))}
+                      </div>
+                      {chatAttachment.type === "photo" ? (
+                        <div className="chatPhotoPicker">
+                          {chatAttachment.url ? (
+                            <img src={chatAttachment.url} alt="Ready to share" />
+                          ) : (
+                            <span>Choose a photo up to 15 MB</span>
+                          )}
+                          <label>
+                            {attachmentPreparing ? "Preparing…" : "Choose photo"}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={chooseChatPhoto}
+                              disabled={attachmentPreparing}
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <label className="chatURLField">
+                          {chatAttachment.type === "video"
+                            ? "Paste a YouTube, Vimeo, Drive or direct video link"
+                            : "Paste a secure website link"}
+                          <input
+                            type="url"
+                            value={chatAttachment.url}
+                            onChange={(event) =>
+                              setChatAttachment((current) => ({
+                                ...current,
+                                url: event.target.value,
+                              }))
+                            }
+                            placeholder="https://…"
+                            required
+                          />
+                        </label>
+                      )}
+                      <div className="chatShareActions">
+                        <button type="button" onClick={() => setAttachmentOpen(false)}>
+                          Cancel
+                        </button>
+                        <button
+                          className="primaryAction"
+                          disabled={attachmentPreparing || !chatAttachment.url}
+                        >
+                          Share ↗
+                        </button>
+                      </div>
+                    </form>
+                  )}
                   <form className="messageForm" onSubmit={sendMessage}>
+                    <button
+                      className="attachmentToggle"
+                      type="button"
+                      onClick={() => setAttachmentOpen((current) => !current)}
+                      aria-label="Share link, photo or video"
+                      title="Share link, photo or video"
+                    >
+                      ＋
+                    </button>
                     <input
                       value={message}
                       onChange={(event) => setMessage(event.target.value)}
                       maxLength={1000}
                       placeholder="Write a message…"
                     />
-                    <button>Send ↗</button>
+                    <button className="messageSendButton">Send ↗</button>
                   </form>
                 </>
               ) : (
