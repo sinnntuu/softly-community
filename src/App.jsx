@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addDoc,
   collection,
@@ -382,6 +382,8 @@ export default function App() {
   const [callStarting, setCallStarting] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [seenNotifications, setSeenNotifications] = useState([]);
+  const knownNotificationIds = useRef(new Set());
+  const notificationsReady = useRef(false);
   const [postToDelete, setPostToDelete] = useState(null);
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
@@ -424,7 +426,13 @@ export default function App() {
       setAuthLoading(false);
       return;
     }
-    getRedirectResult(auth).catch(() => {});
+    getRedirectResult(auth).catch((error) => {
+      setNotice(
+        error?.code === "auth/unauthorized-domain"
+          ? "This website domain is not authorised in Firebase yet."
+          : "Google sign-in could not finish. Please try again.",
+      );
+    });
     return onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
       setAuthLoading(false);
@@ -757,6 +765,33 @@ export default function App() {
   const unreadNotifications = notificationItems.filter(
     (item) => !seenNotifications.includes(item.id),
   ).length;
+
+  useEffect(() => {
+    knownNotificationIds.current = new Set();
+    notificationsReady.current = false;
+    if (!user) return;
+    const timer = window.setTimeout(() => {
+      notificationsReady.current = true;
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const currentIds = new Set(notificationItems.map((item) => item.id));
+    if (!notificationsReady.current) {
+      knownNotificationIds.current = currentIds;
+      return;
+    }
+    const newest = notificationItems.find(
+      (item) => !knownNotificationIds.current.has(item.id),
+    );
+    knownNotificationIds.current = currentIds;
+    if (newest) {
+      setNotice(`New notification: ${newest.title}`);
+      window.setTimeout(() => setNotice(""), 4500);
+    }
+  }, [notificationItems, user]);
   const searchSuggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (term.length < 2) return [];
@@ -806,17 +841,28 @@ export default function App() {
   };
 
   const login = async () => {
-    if (!auth) return;
+    if (!auth) {
+      setNotice("Google sign-in is loading. Please refresh and try again.");
+      return;
+    }
+    setAuthLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      if (
-        error?.code === "auth/popup-blocked" ||
-        error?.code === "auth/cancelled-popup-request"
-      ) {
+      if (error?.code === "auth/popup-closed-by-user") {
+        setNotice("Sign-in window was closed. Tap Google sign-in to try again.");
+        setAuthLoading(false);
+        return;
+      }
+      try {
         await signInWithRedirect(auth, googleProvider);
-      } else if (error?.code !== "auth/popup-closed-by-user") {
-        setNotice("Google sign-in could not start. Check Firebase setup.");
+      } catch (redirectError) {
+        setNotice(
+          redirectError?.code === "auth/unauthorized-domain"
+            ? "This website is not authorised in Firebase Authentication."
+            : "Google sign-in could not start. Please refresh and try once more.",
+        );
+        setAuthLoading(false);
       }
     }
   };
@@ -1855,29 +1901,39 @@ export default function App() {
                           Delete
                         </button>
                       )}
-                      <button
-                        className={`likeButton ${liked ? "liked" : ""}`}
-                        onClick={() => toggleLike(post.id)}
-                        aria-label={liked ? "Unlike story" : "Like story"}
-                      >
-                        <span>{liked ? "♥" : "♡"}</span> {postLikes.length}
-                      </button>
-                      <button
-                        className={`bookmarkButton ${bookmarked ? "saved" : ""}`}
-                        onClick={() => toggleBookmark(post.id)}
-                        aria-label={bookmarked ? "Remove bookmark" : "Bookmark story"}
-                        title={bookmarked ? "Saved" : "Save story"}
-                      >
-                        {bookmarked ? "◆" : "◇"}
-                      </button>
-                      <button
-                        className="shareStoryButton"
-                        onClick={() => shareStory(post)}
-                        aria-label="Share story"
-                        title="Share story"
-                      >
-                        ↗
-                      </button>
+                      <div className="storyActions">
+                        <button
+                          className="commentButton"
+                          onClick={() => setExpanded(post.id)}
+                          aria-label={`Open ${postComments.length} comments`}
+                          title="Open comments"
+                        >
+                          ◌ {postComments.length}
+                        </button>
+                        <button
+                          className={`likeButton ${liked ? "liked" : ""}`}
+                          onClick={() => toggleLike(post.id)}
+                          aria-label={liked ? "Unlike story" : "Like story"}
+                        >
+                          <span>{liked ? "♥" : "♡"}</span> {postLikes.length}
+                        </button>
+                        <button
+                          className={`bookmarkButton ${bookmarked ? "saved" : ""}`}
+                          onClick={() => toggleBookmark(post.id)}
+                          aria-label={bookmarked ? "Remove bookmark" : "Bookmark story"}
+                          title={bookmarked ? "Saved" : "Save story"}
+                        >
+                          {bookmarked ? "◆" : "◇"}
+                        </button>
+                        <button
+                          className="shareStoryButton"
+                          onClick={() => shareStory(post)}
+                          aria-label="Share story"
+                          title="Share story"
+                        >
+                          ↗
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -1947,8 +2003,9 @@ export default function App() {
             {user && <button onClick={openProfileEditor}>Your profile</button>}
           </div>
           <div className="footerNote">
-            <strong>Built for thoughtful voices</strong>
-            <p>Be original. Be respectful. Keep the conversation useful.</p>
+            <strong>Founder</strong>
+            <p className="founderName">SINTU KUMAR RAI</p>
+            <p>Built with care for thoughtful writers and readers.</p>
           </div>
         </div>
         <div className="shell footerBottom">
