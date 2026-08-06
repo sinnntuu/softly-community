@@ -2158,7 +2158,6 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
       <m.section className="challengeOption shell" id="challenge" {...revealMotion}>
         <span className="challengeOptionIcon"><UsersRound size={24} /></span>
         <div>
-          <p className="eyebrow">OPTIONAL FOR SCHOOLS & COLLEGES</p>
           <h2>Run a private thought and photo challenge.</h2>
           <p>
             Softly stays a simple blogging community. When an institution wants an
