@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import {
   addDoc,
   collection,
@@ -28,13 +29,21 @@ import {
 } from "firebase/auth";
 import {
   auth,
+  authPersistenceReady,
   db,
   firebaseReady,
   googleProvider,
 } from "./firebase";
+import { ThemeToggle } from "./components/Experience";
+import { AchievementPanel, StoryGridSkeleton } from "./components/CommunityStates";
+import { cleanText, escapeHTML, safeFileName } from "./lib/text";
 import {
+  Award,
+  Bell,
   Bookmark,
+  BookOpen,
   Download,
+  Flame,
   GraduationCap,
   HandHeart,
   Heart,
@@ -44,16 +53,21 @@ import {
   Leaf,
   Lightbulb,
   Link2,
+  LogOut,
+  Menu,
   MessageCircle,
   MessageSquareText,
   Palette,
   Paperclip,
+  Search as SearchIcon,
   Send,
   Share2,
   Sparkles,
   Star,
   Trophy,
+  UserPlus,
   Video,
+  X,
 } from "lucide-react";
 
 const themeOptions = [
@@ -227,19 +241,6 @@ const linkHost = (value) => {
     return "Shared link";
   }
 };
-const escapeHTML = (value = "") =>
-  String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-const safeFileName = (value = "story") =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60) || "softly-story";
 const createCallRoom = () => {
   if (globalThis.crypto?.getRandomValues) {
     const values = new Uint32Array(4);
@@ -494,6 +495,7 @@ const deleteRefsInChunks = async (database, refs) => {
 };
 
 export default function App() {
+  const reduceMotion = useReducedMotion();
   const previewName = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get("preview")
     : "";
@@ -543,6 +545,7 @@ export default function App() {
       : null,
   );
   const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [likes, setLikes] = useState([]);
   const [comments, setComments] = useState([]);
@@ -577,6 +580,7 @@ export default function App() {
   const [storyPublishing, setStoryPublishing] = useState(false);
   const [callStarting, setCallStarting] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [seenNotifications, setSeenNotifications] = useState([]);
   const knownNotificationIds = useRef(new Set());
   const notificationsReady = useRef(false);
@@ -614,12 +618,77 @@ export default function App() {
   });
 
   useEffect(() => {
+    const overlayOpen =
+      composerOpen ||
+      profileOpen ||
+      socialOpen ||
+      notificationsOpen ||
+      Boolean(postToDelete) ||
+      accountDeleteOpen;
+    if (!overlayOpen) return;
+
+    const previouslyFocused = document.activeElement;
+    document.body.classList.add("overlayOpen");
+    const surface = document.querySelector(
+      ".modalBackdrop:last-of-type [role='dialog'], .modalBackdrop:last-of-type [role='alertdialog'], .socialPanel, .notificationPanel",
+    );
+    const focusable = () =>
+      [...(surface?.querySelectorAll(
+        "button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ) || [])];
+    window.setTimeout(() => focusable()[0]?.focus(), 20);
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        if (accountDeleting || postDeleting || storyPublishing || profileSaving) return;
+        setNotificationsOpen(false);
+        setComposerOpen(false);
+        setProfileOpen(false);
+        setSocialOpen(false);
+        setPostToDelete(null);
+        setAccountDeleteOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !surface) return;
+      const elements = focusable();
+      if (!elements.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.classList.remove("overlayOpen");
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [
+    composerOpen,
+    profileOpen,
+    socialOpen,
+    notificationsOpen,
+    postToDelete,
+    accountDeleteOpen,
+    accountDeleting,
+    postDeleting,
+    storyPublishing,
+    profileSaving,
+  ]);
+
+  useEffect(() => {
     if (localPreviewMode) {
       setAuthLoading(false);
       return;
     }
     if (!firebaseReady || !auth) {
       setAuthLoading(false);
+      setDataLoading(false);
       return;
     }
     getRedirectResult(auth).catch((error) => {
@@ -680,9 +749,17 @@ export default function App() {
       orderBy("createdAt", "desc"),
       limit(60),
     );
-    const stopPosts = onSnapshot(postQuery, (snapshot) => {
-      setPosts(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-    });
+    const stopPosts = onSnapshot(
+      postQuery,
+      (snapshot) => {
+        setPosts(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setDataLoading(false);
+      },
+      () => {
+        setDataLoading(false);
+        setNotice("Stories could not refresh. Check your connection and try again.");
+      },
+    );
     const stopLikes = onSnapshot(collection(db, "likes"), (snapshot) => {
       setLikes(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
     });
@@ -802,6 +879,10 @@ export default function App() {
   const visiblePosts = useMemo(() => {
     const term = search.trim().toLowerCase();
     const savedIds = new Set(bookmarks.map((item) => item.postId));
+    const commentCounts = comments.reduce((result, item) => {
+      result[item.postId] = (result[item.postId] || 0) + 1;
+      return result;
+    }, {});
     const matches = posts.filter((post) => {
       const themeMatch =
         themeFilter === "All themes" || storyTheme(post) === themeFilter;
@@ -813,18 +894,20 @@ export default function App() {
       const savedMatch = feedMode !== "Saved" || savedIds.has(post.id);
       return themeMatch && searchMatch && savedMatch;
     });
-    if (feedMode === "Popular") {
+    if (feedMode === "Trending") {
       return [...matches].sort(
         (a, b) =>
-          (likesByPost[b.id]?.length || 0) -
-            (likesByPost[a.id]?.length || 0) ||
+          (likesByPost[b.id]?.length || 0) * 2 +
+            (commentCounts[b.id] || 0) * 3 -
+            ((likesByPost[a.id]?.length || 0) * 2 +
+              (commentCounts[a.id] || 0) * 3) ||
           timeValue(b.createdAt) - timeValue(a.createdAt),
       );
     }
     return [...matches].sort(
       (a, b) => timeValue(b.createdAt) - timeValue(a.createdAt),
     );
-  }, [posts, search, themeFilter, feedMode, bookmarks, likesByPost]);
+  }, [posts, search, themeFilter, feedMode, bookmarks, likesByPost, comments]);
 
   const connections = useMemo(() => {
     const ids = new Set([
@@ -924,6 +1007,31 @@ export default function App() {
       )
       .slice(0, 3);
   }, [posts, people, profile, user]);
+  const achievements = useMemo(() => {
+    const ownPosts = posts.filter((post) => post.authorId === user?.uid);
+    const ownPostIds = new Set(ownPosts.map((post) => post.id));
+    const receivedLikes = likes.filter((item) => ownPostIds.has(item.postId)).length;
+    const writtenComments = comments.filter((item) => item.authorId === user?.uid).length;
+    const bestStars = ownPosts.reduce(
+      (best, post) => Math.max(best, meaningfulnessAnalysis(post).stars),
+      0,
+    );
+    return [
+      { id: "first-story", label: "First Voice", detail: "Published a first story", icon: BookOpen, unlocked: ownPosts.length > 0 },
+      { id: "meaning-maker", label: "Meaning Maker", detail: "Earned 8+ meaningfulness stars", icon: Sparkles, unlocked: bestStars >= 8 },
+      { id: "conversation", label: "Conversation Starter", detail: "Added 3 thoughtful comments", icon: MessageSquareText, unlocked: writtenComments >= 3 },
+      { id: "community", label: "Community Favourite", detail: "Received 5 story likes", icon: Heart, unlocked: receivedLikes >= 5 },
+      { id: "connected", label: "Connected Writer", detail: "Made 3 community connections", icon: Award, unlocked: connections.length >= 3 },
+    ];
+  }, [posts, likes, comments, user, connections.length]);
+  const revealMotion = reduceMotion
+    ? {}
+    : {
+        initial: { opacity: 0, y: 24 },
+        whileInView: { opacity: 1, y: 0 },
+        viewport: { once: true, amount: 0.12 },
+        transition: { duration: 0.52, ease: [0.22, 1, 0.36, 1] },
+      };
   const notificationItems = useMemo(() => {
     if (!user) return [];
     const personFor = (uid) =>
@@ -1084,7 +1192,11 @@ export default function App() {
       setNotice("Logout control is ready.");
       return;
     }
-    if (auth) await signOut(auth);
+    try {
+      if (auth) await signOut(auth);
+    } catch {
+      setNotice("Could not log out. Please check your connection and try again.");
+    }
   };
 
   const login = async () => {
@@ -1094,6 +1206,7 @@ export default function App() {
     }
     setAuthLoading(true);
     try {
+      await authPersistenceReady;
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       if (error?.code === "auth/popup-closed-by-user") {
@@ -1101,7 +1214,15 @@ export default function App() {
         setAuthLoading(false);
         return;
       }
+      if (error?.code === "auth/popup-blocked") {
+        setNotice("Your browser blocked the sign-in window. Redirecting securely…");
+      } else if (error?.code === "auth/network-request-failed") {
+        setNotice("Sign-in needs an internet connection. Please reconnect and try again.");
+        setAuthLoading(false);
+        return;
+      }
       try {
+        await authPersistenceReady;
         await signInWithRedirect(auth, googleProvider);
       } catch (redirectError) {
         setNotice(
@@ -1298,6 +1419,26 @@ export default function App() {
     }
     if (!user || !db || storyPublishing || mediaPreparing) return;
 
+    const title = cleanText(draft.title, 120);
+    const excerpt = cleanText(draft.excerpt, 260);
+    const body = cleanText(draft.body, 6000);
+    if (title.length < 5) {
+      setNotice("Add a clear title with at least 5 characters.");
+      return;
+    }
+    if (excerpt.length < 15) {
+      setNotice("Add a short summary with at least 15 characters.");
+      return;
+    }
+    if (body.length < 40) {
+      setNotice("Your story needs at least 40 characters before publishing.");
+      return;
+    }
+    if (!themeOptions.some((item) => item.name === draft.theme)) {
+      setNotice("Please choose one of the available event themes.");
+      return;
+    }
+
     if (
       draft.mediaType === "video" &&
       !getVideoDetails(draft.mediaURL)
@@ -1311,9 +1452,9 @@ export default function App() {
     setStoryPublishing(true);
     try {
       const story = {
-        title: draft.title,
-        excerpt: draft.excerpt,
-        body: draft.body,
+        title,
+        excerpt,
+        body,
         theme: draft.theme,
         category: draft.theme,
         authorId: user.uid,
@@ -1388,21 +1529,25 @@ export default function App() {
 
   const addComment = async (event, postId) => {
     event.preventDefault();
-    const text = (commentDrafts[postId] || "").trim();
+    const text = cleanText(commentDrafts[postId], 500);
     if (!user || !db) {
       login();
       return;
     }
     if (!text) return;
-    await addDoc(collection(db, "comments"), {
-      postId,
-      authorId: user.uid,
-      authorName: currentName,
-      authorPhoto: currentPhoto,
-      text: text.slice(0, 500),
-      createdAt: serverTimestamp(),
-    });
-    setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+    try {
+      await addDoc(collection(db, "comments"), {
+        postId,
+        authorId: user.uid,
+        authorName: currentName,
+        authorPhoto: currentPhoto,
+        text,
+        createdAt: serverTimestamp(),
+      });
+      setCommentDrafts((current) => ({ ...current, [postId]: "" }));
+    } catch {
+      setNotice("Comment could not be posted. Please try again.");
+    }
   };
 
   const deleteComment = async (comment) => {
@@ -1677,7 +1822,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
 
   const sendMessage = async (event) => {
     event.preventDefault();
-    const text = message.trim();
+    const text = cleanText(message, 1000);
     if (!text || !user || !activeChat) return;
     if (callPreviewMode) {
       const preview = {
@@ -1686,7 +1831,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         receiverId: activeChat.uid,
         participants: [user.uid, activeChat.uid],
         messageType: "text",
-        text: text.slice(0, 1000),
+        text,
         createdAt: { toMillis: () => Date.now() },
       };
       setMessages((current) => [...current, preview]);
@@ -1695,16 +1840,20 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
       return;
     }
     if (!db) return;
-    await addDoc(collection(db, "messages"), {
-      chatId: chatId(user.uid, activeChat.uid),
-      senderId: user.uid,
-      receiverId: activeChat.uid,
-      participants: [user.uid, activeChat.uid],
-      messageType: "text",
-      text: text.slice(0, 1000),
-      createdAt: serverTimestamp(),
-    });
-    setMessage("");
+    try {
+      await addDoc(collection(db, "messages"), {
+        chatId: chatId(user.uid, activeChat.uid),
+        senderId: user.uid,
+        receiverId: activeChat.uid,
+        participants: [user.uid, activeChat.uid],
+        messageType: "text",
+        text,
+        createdAt: serverTimestamp(),
+      });
+      setMessage("");
+    } catch {
+      setNotice("Message could not be sent. Check the connection and try again.");
+    }
   };
 
   const chooseChatPhoto = async (event) => {
@@ -1839,7 +1988,11 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
   };
 
   return (
-    <main>
+    <>
+      <a className="skipLink" href="#main-content">
+        Skip to main content
+      </a>
+    <main id="main-content">
       {!firebaseReady && (
         <div className="setupBanner">
           Portfolio preview mode — add your free Firebase values in <b>.env</b>{" "}
@@ -1847,18 +2000,38 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
       )}
 
-      <nav className="nav shell">
-        <a className="brand" href="#top">
+      <m.nav
+        className="nav shell"
+        aria-label="Primary navigation"
+        initial={reduceMotion ? false : { opacity: 0, y: -14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42 }}
+      >
+        <a className="brand" href="#top" aria-label="Softly home">
           softly<span>.</span>
         </a>
-        <div className="navLinks">
-          <a href="#stories">Stories</a>
+        <button
+          type="button"
+          className="mobileMenuToggle"
+          aria-expanded={mobileNavOpen}
+          aria-controls="primary-navigation"
+          aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+          onClick={() => setMobileNavOpen((current) => !current)}
+        >
+          {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+        <div
+          className={`navLinks ${mobileNavOpen ? "open" : ""}`}
+          id="primary-navigation"
+        >
+          <a href="#stories" onClick={() => setMobileNavOpen(false)}>Stories</a>
           <button
             className="navTextButton"
             onClick={() =>
               requireUser(() => {
                 setSocialOpen(true);
                 setActiveChat(null);
+                setMobileNavOpen(false);
               })
             }
           >
@@ -1869,10 +2042,16 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           </button>
           <button
             className="writeButton"
-            onClick={() => requireUser(() => setComposerOpen(true))}
+            onClick={() =>
+              requireUser(() => {
+                setComposerOpen(true);
+                setMobileNavOpen(false);
+              })
+            }
           >
             Write a story <span>＋</span>
           </button>
+          <ThemeToggle />
           {user ? (
             <div className="account">
               <button
@@ -1881,14 +2060,17 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 aria-label={`Notifications${unreadNotifications ? `, ${unreadNotifications} new` : ""}`}
                 title="Notifications"
               >
-                🔔
+                <Bell size={17} />
                 {unreadNotifications > 0 && (
                   <span>{Math.min(unreadNotifications, 9)}</span>
                 )}
               </button>
               <button
                 className="accountProfile"
-                onClick={openProfileEditor}
+                onClick={() => {
+                  openProfileEditor();
+                  setMobileNavOpen(false);
+                }}
                 title="Edit your profile"
               >
                 <ProfileAvatar
@@ -1898,7 +2080,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 <span className="accountName">{currentName}</span>
               </button>
               <button className="signOut" onClick={logout}>
-                Log out
+                <LogOut size={13} /> Log out
               </button>
             </div>
           ) : (
@@ -1908,7 +2090,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             </button>
           )}
         </div>
-      </nav>
+      </m.nav>
 
       {notificationsOpen && user && (
         <div
@@ -1939,10 +2121,10 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                   <button key={item.id} onClick={() => openNotification(item)}>
                     <span className={`notificationIcon ${item.type}`}>
                       {item.type === "follow"
-                        ? "+"
+                        ? <UserPlus size={15} />
                         : item.type === "message"
-                          ? "↗"
-                          : "♥"}
+                          ? <MessageCircle size={15} />
+                          : <Heart size={15} />}
                     </span>
                     <span>
                       <strong>{item.title}</strong>
@@ -1952,7 +2134,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 ))
               ) : (
                 <div className="notificationEmpty">
-                  <span>♡</span>
+                  <span><Bell size={28} /></span>
                   <strong>You’re all caught up</strong>
                   <p>New follows, comments, likes and messages appear here.</p>
                 </div>
@@ -1962,7 +2144,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
       )}
 
-      <section className="communityHero shell" id="top">
+      <m.section className="communityHero shell" id="top" initial={false}>
         <div className="heroCopy">
           <p className="eyebrow">A JOURNAL WRITTEN TOGETHER</p>
           <h1>
@@ -1994,9 +2176,9 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           <div className="floatingNote noteTwo">CHAT</div>
           <div className="floatingHeart">♥</div>
         </div>
-      </section>
+      </m.section>
 
-      <section className="eventChallenge shell" id="challenge">
+      <m.section className="eventChallenge shell" id="challenge" {...revealMotion}>
         <div className="eventIntro">
           <p className="eyebrow">LIVE COMMUNITY EVENT</p>
           <h2>Choose a theme. Share your perspective.</h2>
@@ -2088,9 +2270,9 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             depth, reflection, specificity and usefulness, then awards up to 10 stars.
           </p>
         </div>
-      </section>
+      </m.section>
 
-      <section className="stories shell" id="stories">
+      <m.section className="stories shell" id="stories" {...revealMotion}>
         <div className="sectionHead">
           <div>
             <p className="eyebrow">THEME CHALLENGE ENTRIES</p>
@@ -2104,12 +2286,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search themes, stories or usernames"
             />
-            <span>⌕</span>
+            <span><SearchIcon size={16} /></span>
             {searchSuggestions.length > 0 && (
               <div className="searchSuggestions">
                 {searchSuggestions.map((item) => (
                   <button key={item} onClick={() => setSearch(item)}>
-                    <span>⌕</span> {item}
+                    <span><SearchIcon size={13} /></span> {item}
                   </button>
                 ))}
               </div>
@@ -2130,7 +2312,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             ))}
           </div>
           <div className="feedModes" aria-label="Feed order">
-            {["Latest", "Popular", "Saved"].map((item) => (
+            {["Latest", "Trending", "Saved"].map((item) => (
               <button
                 key={item}
                 className={feedMode === item ? "active" : ""}
@@ -2140,13 +2322,19 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                     : setFeedMode(item)
                 }
               >
-                {item === "Saved" ? "◆ Saved" : item}
+                {item === "Saved" ? (
+                  <><Bookmark size={13} /> Saved</>
+                ) : item === "Trending" ? (
+                  <><Flame size={13} /> Trending</>
+                ) : item}
               </button>
             ))}
           </div>
         </div>
 
-        {visiblePosts.length ? (
+        {dataLoading ? (
+          <StoryGridSkeleton />
+        ) : visiblePosts.length ? (
           <div className="storyGrid">
             {visiblePosts.map((post, index) => {
               const postLikes = likesByPost[post.id] || [];
@@ -2171,7 +2359,14 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                   ? post.mediaURL
                   : videoDetails?.thumbnail || "";
               return (
-                <article className="storyCard" id={`story-${post.id}`} key={post.id}>
+                <m.article
+                  layout={!reduceMotion}
+                  className="storyCard"
+                  id={`story-${post.id}`}
+                  key={post.id}
+                  whileHover={reduceMotion ? undefined : { y: -5 }}
+                  transition={{ duration: 0.2 }}
+                >
                   <div
                     className={`storyArt ${tones[index % 3]} ${
                       mediaThumbnail ? "hasMedia" : ""
@@ -2182,7 +2377,9 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                         className="storyMediaImage"
                         src={mediaThumbnail}
                         alt=""
-                        loading="lazy"
+                        loading={index < 2 ? "eager" : "lazy"}
+                        decoding="async"
+                        fetchPriority={index === 0 ? "high" : "auto"}
                         referrerPolicy="no-referrer"
                       />
                     )}
@@ -2349,7 +2546,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                       </div>
                     </div>
                   </div>
-                </article>
+                </m.article>
               );
             })}
           </div>
@@ -2358,9 +2555,9 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             No stories yet. Sign in with Google and publish the first one.
           </div>
         )}
-      </section>
+      </m.section>
 
-      <section className="manifesto shell">
+      <m.section className="manifesto shell" {...revealMotion}>
         <div className="quoteMark">“</div>
         <blockquote>
           A story can introduce an idea.
@@ -2370,9 +2567,9 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           <p>OPEN COMMUNITY</p>
           <span>Write freely. Follow thoughtfully. Talk respectfully.</span>
         </div>
-      </section>
+      </m.section>
 
-      <section className="joinCard shell">
+      <m.section className="joinCard shell" {...revealMotion}>
         <div>
           <p className="eyebrow">JOIN SOFTLY</p>
           <h2>Your next reader might become a friend.</h2>
@@ -2384,7 +2581,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         <button className="primaryAction" onClick={user ? () => setSocialOpen(true) : login}>
           {user ? "Find people ↗" : "Continue with Google ↗"}
         </button>
-      </section>
+      </m.section>
 
       <footer className="siteFooter">
         <div className="shell footerGrid">
@@ -2400,7 +2597,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           <div>
             <strong>Explore</strong>
             <a href="#stories">Latest stories</a>
-            <button onClick={() => setFeedMode("Popular")}>Popular</button>
+            <button onClick={() => setFeedMode("Trending")}>Trending</button>
             <button onClick={() => requireUser(() => setFeedMode("Saved"))}>
               Bookmarks
             </button>
@@ -2427,18 +2624,20 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
       </footer>
 
-      <button
+      <m.button
         type="button"
         className="floatingChatButton"
         onClick={openChatPanel}
         aria-label={`Open chat${unreadMessages ? `, ${unreadMessages} new messages` : ""}`}
+        whileHover={reduceMotion ? undefined : { y: -3, scale: 1.02 }}
+        whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       >
         <span className="chatGlyph" aria-hidden="true"><MessageCircle size={18} /></span>
         <span>Messages</span>
         {unreadMessages > 0 && (
           <strong>{Math.min(unreadMessages, 9)}</strong>
         )}
-      </button>
+      </m.button>
 
       {composerOpen && (
         <div className="modalBackdrop">
@@ -2787,6 +2986,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 {profileSaving ? "Saving…" : "Save profile ↗"}
               </button>
             </form>
+            <AchievementPanel achievements={achievements} />
             <div className="dangerZone">
               <div>
                 <strong>Delete account</strong>
@@ -3314,7 +3514,21 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
       )}
 
-      {notice && <div className="toast">✓ {notice}</div>}
+      <AnimatePresence>
+        {notice && (
+          <m.div
+            className="toast"
+            role="status"
+            aria-live="polite"
+            initial={reduceMotion ? false : { opacity: 0, y: 14, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98 }}
+          >
+            ✓ {notice}
+          </m.div>
+        )}
+      </AnimatePresence>
     </main>
+    </>
   );
 }

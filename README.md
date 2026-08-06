@@ -16,7 +16,7 @@ notifications, connections, and private real-time chat.
 - Share YouTube, Vimeo, Google Drive, MP4, WebM, or OGG videos
 - Real-time likes
 - Story comments, sharing, personal bookmarks, and offline story downloads with photos
-- Latest, popular and saved feed filters with search suggestions
+- Latest, trending and saved feed filters with search suggestions
 - Owner-only story deletion with like cleanup
 - Editable display name, unique `@username`, bio, location, website, and profile photo
 - Find people by username or display name
@@ -27,8 +27,14 @@ notifications, connections, and private real-time chat.
 - Audio and video-call invitations inside private chat using Jitsi Meet
 - Clearly accessible logout and a complete responsive footer
 - Re-authenticated account deletion with related-data cleanup
-- Responsive neomorphic design with a consistent Lucide icon system
-- Firestore rules that protect profiles and reserve usernames atomically
+- Responsive neomorphic design with system-aware dark mode, reduced-motion support,
+  polished loading/empty/error states, and a consistent Lucide icon system
+- Accessible keyboard navigation, focus management, semantic landmarks, and touch targets
+- SEO metadata, Open Graph previews, structured data, sitemap, robots file, and web manifest
+- Route-level lazy loading, vendor code splitting, image lazy loading, and production caching
+- Achievement badges derived from each writer's real community activity
+- Strict Firestore document validation that protects profiles, posts, interactions,
+  connections, private messages, and reserved usernames
 
 ## Free Firebase setup
 

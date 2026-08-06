@@ -2,20 +2,76 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      try {
+        const saved = localStorage.getItem("softly-color-mode");
+        const dark = saved === "dark" || (!saved && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.dataset.route = location.pathname === "/" ? "home" : "other";
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      } catch (_) {}
+    </script>
+    <style id="critical-shell-style">
+      .launchShell{display:none;position:fixed;inset:0;z-index:9999;overflow:hidden;background:#e9e7df;color:#20241f;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+      [data-route="home"] .launchShell{display:block}.launchInner{width:min(1120px,calc(100% - 44px));margin:auto;padding-top:42px}.launchBrand{font:700 30px Georgia,serif}.launchBrand span,.launchKicker,.launchTitle em{color:#a54836}.launchHero{display:grid;grid-template-columns:1.08fr .92fr;align-items:center;gap:70px;min-height:650px}.launchKicker{font-size:11px;font-weight:800;letter-spacing:.18em}.launchTitle{max-width:720px;margin:30px 0 24px;font:500 clamp(60px,6.1vw,86px)/.95 Georgia,serif;letter-spacing:-.045em}.launchTitle em{font-weight:400}.launchText{max-width:570px;margin:0;color:#575c56;font:19px/1.6 Georgia,serif}.launchArt{aspect-ratio:1.12;border-radius:48% 42% 52% 38%;background:#d0cabd;box-shadow:24px 24px 55px #c1c0b8,-20px -20px 48px #fff}
+      [data-theme="dark"] .launchShell{background:#171a18;color:#f2eee4}[data-theme="dark"] .launchTitle em,[data-theme="dark"] .launchKicker,[data-theme="dark"] .launchBrand span{color:#f08a72}[data-theme="dark"] .launchText{color:#c5c9c3}[data-theme="dark"] .launchArt{background:#343a35;box-shadow:24px 24px 55px #0d0f0e,-20px -20px 48px #222724}
+      @media(max-width:760px){.launchInner{width:min(100% - 28px,560px);padding-top:24px}.launchHero{display:block;min-height:0;padding-top:80px}.launchTitle{margin-top:24px;font-size:62px}.launchText{font-size:18px}.launchArt{height:210px;margin-top:54px}}
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       name="description"
-      content="Softly is a thoughtful community for stories, connections, and conversation."
+      content="Join Softly Community to publish meaningful stories, enter themed writing events, discover thoughtful people, and build real conversations."
     />
-    <meta property="og:title" content="Softly — Share ideas worth reading" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="Sintu Kumar Rai" />
+    <meta name="theme-color" content="#e9e7df" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#171a18" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://softly-community.web.app/" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="icon" type="image/png" href="/og-community.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Softly Community" />
+    <meta property="og:url" content="https://softly-community.web.app/" />
+    <meta property="og:title" content="Softly Community — Ideas worth sharing" />
     <meta
       property="og:description"
-      content="Publish stories, support writers, follow people, and chat."
+      content="Publish meaningful stories, join themed events, support writers, and turn ideas into real conversations."
     />
-    <meta property="og:image" content="/og-community.png" />
-    <title>Softly — Share ideas worth reading</title>
+    <meta property="og:image" content="https://softly-community.web.app/og-community.png" />
+    <meta property="og:image:alt" content="Softly Community — a thoughtful social blogging platform" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Softly Community — Ideas worth sharing" />
+    <meta name="twitter:description" content="Publish stories, join themed events, and connect through meaningful conversations." />
+    <meta name="twitter:image" content="https://softly-community.web.app/og-community.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Softly Community",
+        "url": "https://softly-community.web.app/",
+        "description": "A social blogging community for meaningful stories, themed events, and thoughtful conversations.",
+        "creator": {
+          "@type": "Person",
+          "name": "Sintu Kumar Rai"
+        }
+      }
+    </script>
+    <title>Softly Community — Ideas worth sharing</title>
   </head>
   <body>
+    <div class="launchShell" id="launch-shell" aria-hidden="true">
+      <div class="launchInner">
+        <div class="launchBrand">softly<span>.</span></div>
+        <div class="launchHero">
+          <div>
+            <div class="launchKicker">A JOURNAL WRITTEN TOGETHER</div>
+            <div class="launchTitle">Ideas. People.<br />Real <em>conversation.</em></div>
+            <p class="launchText">Publish what you know, follow voices you value, and turn thoughtful stories into meaningful connections.</p>
+          </div>
+          <div class="launchArt"></div>
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

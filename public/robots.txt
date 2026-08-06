@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://softly-community.web.app/sitemap.xml

@@ -5,7 +5,11 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -23,10 +27,20 @@ export const firebaseReady = Object.values(firebaseConfig).every(
 const app = firebaseReady ? initializeApp(firebaseConfig) : null;
 
 export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+export const db = app
+  ? initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    })
+  : null;
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
+googleProvider.addScope("email");
+googleProvider.addScope("profile");
 
-if (auth) {
-  setPersistence(auth, browserLocalPersistence).catch(() => {});
-}
+export const authPersistenceReady = auth
+  ? setPersistence(auth, browserLocalPersistence).catch(() => null)
+  : Promise.resolve(null);
+
+if (auth) auth.useDeviceLanguage();

@@ -94,8 +94,15 @@ service cloud.firestore {
       return !request.resource.data.keys().hasAny(["theme"])
         || (
           request.resource.data.theme is string
-          && request.resource.data.theme.size() >= 2
-          && request.resource.data.theme.size() <= 60
+          && request.resource.data.theme in [
+            "Creative Expression",
+            "Culture & Heritage",
+            "Technology for Good",
+            "Life & Wellbeing",
+            "Nature & Sustainability",
+            "Student Innovation",
+            "Social Impact"
+          ]
         );
     }
 
@@ -113,6 +120,35 @@ service cloud.firestore {
           && request.resource.data.analysisVersion is string
           && request.resource.data.analysisVersion.size() <= 40
         );
+    }
+
+    function validPostShape() {
+      return request.resource.data.keys().hasOnly([
+          "title", "excerpt", "body", "theme", "category",
+          "authorId", "authorName", "authorUsername", "authorPhoto",
+          "meaningfulnessStars", "analysisVersion", "createdAt",
+          "mediaType", "mediaURL"
+        ])
+        && request.resource.data.keys().hasAll([
+          "title", "excerpt", "body", "theme", "category",
+          "authorId", "authorName", "meaningfulnessStars",
+          "analysisVersion", "createdAt"
+        ])
+        && request.resource.data.excerpt is string
+        && request.resource.data.excerpt.size() >= 15
+        && request.resource.data.excerpt.size() <= 260
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() >= 2
+        && request.resource.data.authorName.size() <= 50
+        && request.resource.data.category == request.resource.data.theme
+        && request.resource.data.createdAt is timestamp
+        && (!request.resource.data.keys().hasAny(["authorUsername"])
+          || (request.resource.data.authorUsername is string
+            && (request.resource.data.authorUsername == ""
+              || request.resource.data.authorUsername.matches("^[a-z0-9_]{3,20}$"))))
+        && (!request.resource.data.keys().hasAny(["authorPhoto"])
+          || (request.resource.data.authorPhoto is string
+            && request.resource.data.authorPhoto.size() <= 180000));
     }
 
     match /users/{userId} {
@@ -133,13 +169,21 @@ service cloud.firestore {
     match /usernames/{username} {
       allow read: if signedIn();
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "uid", "username", "createdAt"
+        ])
         && username.matches("^[a-z0-9_]{3,20}$")
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.username == username;
+        && request.resource.data.username == username
+        && request.resource.data.createdAt is timestamp;
       allow update: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "uid", "username", "createdAt"
+        ])
         && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.username == username;
+        && request.resource.data.username == username
+        && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
@@ -153,12 +197,15 @@ service cloud.firestore {
         && request.resource.data.body is string
         && request.resource.data.body.size() >= 40
         && request.resource.data.body.size() <= 6000
+        && validPostShape()
         && validPostMedia()
         && validPostTheme()
         && validPostAnalysis();
       allow update: if signedIn()
         && resource.data.authorId == request.auth.uid
         && request.resource.data.authorId == resource.data.authorId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validPostShape()
         && validPostMedia()
         && validPostTheme()
         && validPostAnalysis();
@@ -168,8 +215,12 @@ service cloud.firestore {
     match /likes/{likeId} {
       allow read: if true;
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "postId", "userId", "createdAt"
+        ])
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.postId is string
+        && request.resource.data.createdAt is timestamp
         && likeId == request.resource.data.postId + "_" + request.auth.uid;
       allow delete: if signedIn() && (
         resource.data.userId == request.auth.uid
@@ -188,6 +239,9 @@ service cloud.firestore {
     match /comments/{commentId} {
       allow read: if true;
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "postId", "authorId", "authorName", "authorPhoto", "text", "createdAt"
+        ])
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.postId is string
         && request.resource.data.authorName is string
@@ -196,6 +250,10 @@ service cloud.firestore {
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 500
+        && request.resource.data.createdAt is timestamp
+        && (!request.resource.data.keys().hasAny(["authorPhoto"])
+          || (request.resource.data.authorPhoto is string
+            && request.resource.data.authorPhoto.size() <= 180000))
         && exists(
           /databases/$(database)/documents/posts/$(request.resource.data.postId)
         );
@@ -222,8 +280,12 @@ service cloud.firestore {
         )
       );
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "postId", "userId", "createdAt"
+        ])
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.postId is string
+        && request.resource.data.createdAt is timestamp
         && bookmarkId == request.resource.data.postId + "_" + request.auth.uid
         && exists(
           /databases/$(database)/documents/posts/$(request.resource.data.postId)
@@ -247,10 +309,24 @@ service cloud.firestore {
           resource.data.to == request.auth.uid
         );
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "from", "to", "fromName", "toName", "status", "createdAt", "updatedAt"
+        ])
         && request.resource.data.from == request.auth.uid
         && request.resource.data.to != request.auth.uid
-        && request.resource.data.status == "pending";
+        && request.resource.data.status == "pending"
+        && request.resource.data.fromName is string
+        && request.resource.data.fromName.size() >= 2
+        && request.resource.data.fromName.size() <= 50
+        && request.resource.data.toName is string
+        && request.resource.data.toName.size() >= 2
+        && request.resource.data.toName.size() <= 50
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
       allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "updatedAt"
+        ])
         && request.resource.data.from == resource.data.from
         && request.resource.data.to == resource.data.to
         && request.resource.data.status in ["pending", "accepted"]
@@ -268,17 +344,27 @@ service cloud.firestore {
     match /messages/{messageId} {
       allow read: if signedIn() && request.auth.uid in resource.data.participants;
       allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "chatId", "senderId", "receiverId", "participants",
+          "messageType", "text", "createdAt", "callRoom", "mediaURL"
+        ])
         && request.resource.data.senderId == request.auth.uid
         && request.resource.data.receiverId != request.auth.uid
         && request.resource.data.participants.size() == 2
         && request.auth.uid in request.resource.data.participants
         && request.resource.data.receiverId in request.resource.data.participants
+        && request.resource.data.chatId is string
+        && request.resource.data.chatId in [
+          request.resource.data.senderId + "_" + request.resource.data.receiverId,
+          request.resource.data.receiverId + "_" + request.resource.data.senderId
+        ]
         && request.resource.data.messageType in [
           "text", "video_call", "audio_call", "photo", "video", "link"
         ]
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 1000
+        && request.resource.data.createdAt is timestamp
         && (
           (
             request.resource.data.messageType == "text"

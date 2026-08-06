@@ -1,0 +1,17 @@
+{
+  "name": "Softly Community",
+  "short_name": "Softly",
+  "description": "Meaningful stories, thoughtful people, and real conversations.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#e9e7df",
+  "theme_color": "#da7059",
+  "icons": [
+    {
+      "src": "/og-community.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
