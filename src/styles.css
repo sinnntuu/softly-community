@@ -83,6 +83,9 @@ main { overflow: clip; }
 
 .navTextButton {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .notificationDot {
@@ -1697,6 +1700,52 @@ footer button {
   letter-spacing: -1px;
 }
 
+.socialActionNav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: -10px 0 24px;
+}
+
+.socialActionNav button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 13px;
+  padding: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 750;
+  box-shadow: 4px 4px 9px var(--shadow-dark), -4px -4px 9px var(--shadow-light);
+}
+
+.socialActionNav button:hover:not(:disabled) {
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.socialActionNav button:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+.socialActionNav b {
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-size: 8px;
+}
+
 .profileSummary {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1751,6 +1800,9 @@ footer button {
 
 .requestSection h3,
 .peopleSection h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0 0 13px;
   color: var(--muted);
   font-size: 9px;
@@ -1833,6 +1885,10 @@ footer button {
 
 .requestActions button,
 .personAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   border: 0;
   border-radius: 999px;
   background: var(--paper);
@@ -1847,10 +1903,12 @@ footer button {
 }
 
 .requestActions button {
-  width: 31px;
-  height: 31px;
-  padding: 0;
+  min-height: 31px;
+  padding: 7px 9px;
 }
+
+.requestActions .acceptRequest { background: var(--ink); color: white; }
+.requestActions .declineRequest { color: #9b5248; }
 
 .personAction.connected {
   background: var(--ink);
@@ -2471,6 +2529,30 @@ footer button {
 
 .notificationPanel h2 { margin: 3px 0 0; font: 500 30px var(--serif); }
 .notificationPanel .modalClose { position: static; flex: 0 0 auto; }
+.notificationTools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 2px 12px;
+}
+.notificationTools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 13px;
+  padding: 8px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
+  box-shadow: 4px 4px 9px var(--shadow-dark), -4px -4px 9px var(--shadow-light);
+}
+.notificationTools button:hover:not(:disabled) { color: var(--accent); transform: translateY(-1px); }
+.notificationTools button:disabled { cursor: default; opacity: .58; }
 .notificationList { max-height: 480px; overflow-y: auto; padding: 3px 7px 10px 3px; }
 .notificationList > button {
   width: 100%;
@@ -2501,6 +2583,7 @@ footer button {
   font-weight: 800;
 }
 .notificationIcon.message { background: #bfcbbd; color: #495846; }
+.notificationIcon.accepted { background: #c8d7c4; color: #3f6043; }
 .notificationIcon.post { background: #edb19e; color: #914b3d; }
 .notificationEmpty { display: grid; place-items: center; padding: 44px 20px; text-align: center; }
 .notificationEmpty > span { font-size: 34px; color: var(--accent); }

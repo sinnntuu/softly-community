@@ -607,7 +607,7 @@ export default function RoomHub({
             <header className="roomHero">
               <span className="roomHeroIcon"><UsersRound size={26} /></span>
               <div>
-                <p className="eyebrow">SCHOOL & COLLEGE CHALLENGES</p>
+                <p className="eyebrow">LIVE CHALLENGE ROOM</p>
                 <h2 id="room-hub-title">Host a thoughtful photo challenge.</h2>
                 <p>
                   Create a private room, share one code with participants, collect
@@ -629,7 +629,7 @@ export default function RoomHub({
                       setCreateDraft((current) => ({ ...current, title: event.target.value }))
                     }
                     maxLength={80}
-                    placeholder="Inter-school ideas challenge"
+                    placeholder="Community ideas challenge"
                     required
                   />
                 </label>
@@ -641,7 +641,7 @@ export default function RoomHub({
               <form className="roomActionCard" onSubmit={joinRoom}>
                 <span className="roomCardIcon"><LogIn size={20} /></span>
                 <h3>Join a challenge</h3>
-                <p>Enter the six-character code shared by your school or college organizer.</p>
+                <p>Enter the six-character code shared by the room organizer.</p>
                 <label>
                   Room code
                   <input

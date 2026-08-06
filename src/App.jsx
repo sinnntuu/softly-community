@@ -41,8 +41,11 @@ import { cleanText, escapeHTML, safeFileName } from "./lib/text";
 import {
   Award,
   Bell,
+  BellRing,
   Bookmark,
   BookOpen,
+  CheckCheck,
+  Clock3,
   Download,
   Flame,
   GraduationCap,
@@ -50,6 +53,7 @@ import {
   Heart,
   HeartPulse,
   ImagePlus,
+  Inbox,
   Landmark,
   Leaf,
   Lightbulb,
@@ -65,11 +69,42 @@ import {
   Share2,
   Sparkles,
   Star,
+  UserCheck,
   UserPlus,
   UsersRound,
   Video,
   X,
 } from "lucide-react";
+
+async function showDeviceNotification(item) {
+  if (
+    typeof window === "undefined" ||
+    !("Notification" in window) ||
+    Notification.permission !== "granted"
+  ) {
+    return;
+  }
+
+  const options = {
+    body: `${item.title}\n${item.detail}`,
+    icon: "/og-community.png",
+    tag: item.id,
+    data: { url: "/" },
+  };
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registration =
+        (await navigator.serviceWorker.getRegistration("/")) ||
+        (await navigator.serviceWorker.register("/softly-notifications-sw.js"));
+      await registration.showNotification("Softly", options);
+      return;
+    }
+    new Notification("Softly", options);
+  } catch {
+    // The in-app notification still appears when a browser blocks system alerts.
+  }
+}
 
 const themeOptions = [
   {
@@ -584,6 +619,11 @@ export default function App() {
   const [roomOpen, setRoomOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [seenNotifications, setSeenNotifications] = useState([]);
+  const [notificationPermission, setNotificationPermission] = useState(() =>
+    typeof window !== "undefined" && "Notification" in window
+      ? Notification.permission
+      : "unsupported",
+  );
   const knownNotificationIds = useRef(new Set());
   const notificationsReady = useRef(false);
   const [postToDelete, setPostToDelete] = useState(null);
@@ -785,6 +825,7 @@ export default function App() {
     if (!user || !db) {
       setBookmarks([]);
       setAllMessages([]);
+      setSeenNotifications([]);
       return;
     }
     const stopBookmarks = onSnapshot(
@@ -805,11 +846,29 @@ export default function App() {
           snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
         ),
     );
+    const stopNotificationReads = onSnapshot(
+      collection(db, "notificationReads", user.uid, "items"),
+      (snapshot) => setSeenNotifications(snapshot.docs.map((item) => item.id)),
+    );
     return () => {
       stopBookmarks();
       stopMessages();
+      stopNotificationReads();
     };
   }, [user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    setNotificationPermission(Notification.permission);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/softly-notifications-sw.js")
+        .catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     if (localPreviewMode) return;
@@ -1024,7 +1083,7 @@ export default function App() {
         const person = personFor(request.to);
         items.push({
           id: `connected-${request.id}`,
-          type: "message",
+          type: "accepted",
           actorId: request.to,
           title: `${person?.displayName || request.toName || "A writer"} accepted your follow request`,
           detail: "You can now start a private conversation.",
@@ -1065,14 +1124,17 @@ export default function App() {
         photo: "shared a photo",
         video: "shared a video",
         link: "shared a link",
-        text: `sent: ${item.text || "a message"}`,
+        text: "sent you a message",
       };
       items.push({
         id: `message-${item.id}`,
         type: "message",
         actorId: item.senderId,
         title: `${person?.displayName || "Someone"} ${descriptions[item.messageType] || "sent a message"}`,
-        detail: "Open your private conversation.",
+        detail:
+          item.messageType === "text"
+            ? (item.text || "Open your private conversation.").slice(0, 90)
+            : "Open your private conversation.",
         createdAt: item.createdAt,
       });
     });
@@ -1080,11 +1142,13 @@ export default function App() {
       .sort((a, b) => timeValue(b.createdAt) - timeValue(a.createdAt))
       .slice(0, 24);
   }, [user, profile, people, posts, likes, comments, allMessages, incomingRequests, outgoing]);
-  const unreadNotifications = notificationItems.filter(
-    (item) => !seenNotifications.includes(item.id),
-  ).length;
-  const unreadMessages = notificationItems.filter(
-    (item) => item.type === "message" && !seenNotifications.includes(item.id),
+  const unreadNotificationItems = useMemo(() => {
+    const seen = new Set(seenNotifications);
+    return notificationItems.filter((item) => !seen.has(item.id));
+  }, [notificationItems, seenNotifications]);
+  const unreadNotifications = unreadNotificationItems.length;
+  const unreadMessages = unreadNotificationItems.filter(
+    (item) => item.type === "message",
   ).length;
 
   useEffect(() => {
@@ -1110,9 +1174,12 @@ export default function App() {
     knownNotificationIds.current = currentIds;
     if (newest) {
       setNotice(`New notification: ${newest.title}`);
+      if (!seenNotifications.includes(newest.id)) {
+        showDeviceNotification(newest);
+      }
       window.setTimeout(() => setNotice(""), 4500);
     }
-  }, [notificationItems, user]);
+  }, [notificationItems, seenNotifications, user]);
   const searchSuggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (term.length < 2) return [];
@@ -1134,10 +1201,62 @@ export default function App() {
 
   const openNotifications = () => {
     setNotificationsOpen(true);
-    setSeenNotifications(notificationItems.map((item) => item.id));
+  };
+
+  const markNotificationSeen = (item) => {
+    if (!item || !user) return;
+    setSeenNotifications((current) =>
+      current.includes(item.id) ? current : [...current, item.id],
+    );
+    if (localPreviewMode || !db) return;
+    setDoc(doc(db, "notificationReads", user.uid, "items", item.id), {
+      notificationId: item.id,
+      readAt: serverTimestamp(),
+    }).catch(() => {
+      setNotice("Could not update the notification. Please try again.");
+    });
+  };
+
+  const markAllNotificationsSeen = async () => {
+    if (!user || !unreadNotificationItems.length) return;
+    const ids = unreadNotificationItems.map((item) => item.id);
+    setSeenNotifications((current) => [...new Set([...current, ...ids])]);
+    if (localPreviewMode || !db) return;
+    try {
+      const batch = writeBatch(db);
+      unreadNotificationItems.forEach((item) => {
+        batch.set(doc(db, "notificationReads", user.uid, "items", item.id), {
+          notificationId: item.id,
+          readAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    } catch {
+      setNotice("Could not mark notifications as seen. Please try again.");
+    }
+  };
+
+  const enableDeviceNotifications = async () => {
+    if (!("Notification" in window)) {
+      setNotificationPermission("unsupported");
+      setNotice("System notifications are not supported by this browser.");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      setNotice(
+        permission === "granted"
+          ? "Phone and browser alerts are enabled while Softly is active."
+          : "Notification permission was not enabled.",
+      );
+    } catch {
+      setNotice("Notification permission could not be opened.");
+    }
   };
 
   const openNotification = (item) => {
+    markNotificationSeen(item);
     setNotificationsOpen(false);
     if (item.type === "post") {
       setExpanded(item.postId);
@@ -1145,7 +1264,7 @@ export default function App() {
       return;
     }
     setSocialOpen(true);
-    if (item.type === "message") {
+    if (item.type === "message" || item.type === "accepted") {
       setActiveChat(people.find((person) => person.uid === item.actorId) || null);
     }
   };
@@ -1629,6 +1748,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         accountMessages,
         ownComments,
         ownBookmarks,
+        notificationReads,
       ] = await Promise.all([
         getDocs(
           query(collection(db, "posts"), where("authorId", "==", user.uid)),
@@ -1654,6 +1774,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         getDocs(
           query(collection(db, "bookmarks"), where("userId", "==", user.uid)),
         ),
+        getDocs(collection(db, "notificationReads", user.uid, "items")),
       ]);
 
       const likesOnAuthoredPosts = await Promise.all(
@@ -1694,6 +1815,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         ...accountMessages.docs.map((item) => item.ref),
         ...ownComments.docs.map((item) => item.ref),
         ...ownBookmarks.docs.map((item) => item.ref),
+        ...notificationReads.docs.map((item) => item.ref),
         ...likesOnAuthoredPosts.flatMap((snapshot) =>
           snapshot.docs.map((item) => item.ref),
         ),
@@ -1754,26 +1876,36 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
 
   const requestFollow = async (person) => {
     if (!user || !db) return;
-    await setDoc(doc(db, "follows", `${user.uid}_${person.uid}`), {
-      from: user.uid,
-      to: person.uid,
-      fromName: currentName,
-      toName: person.displayName || "Softly writer",
-      status: "pending",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      await setDoc(doc(db, "follows", `${user.uid}_${person.uid}`), {
+        from: user.uid,
+        to: person.uid,
+        fromName: currentName,
+        toName: person.displayName || "Softly writer",
+        status: "pending",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setNotice(`Follow request sent to ${person.displayName || "this writer"}.`);
+    } catch {
+      setNotice("Follow request could not be sent. Please try again.");
+    }
   };
 
   const answerRequest = async (request, accepted) => {
     if (!db) return;
-    if (accepted) {
-      await updateDoc(doc(db, "follows", request.id), {
-        status: "accepted",
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await deleteDoc(doc(db, "follows", request.id));
+    try {
+      if (accepted) {
+        await updateDoc(doc(db, "follows", request.id), {
+          status: "accepted",
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await deleteDoc(doc(db, "follows", request.id));
+      }
+      setNotice(accepted ? "Follow request accepted." : "Follow request declined.");
+    } catch {
+      setNotice("Request could not be updated. Please try again.");
     }
   };
 
@@ -2012,7 +2144,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               })
             }
           >
-            People
+            <UserPlus size={15} /> People
             {incomingRequests.length > 0 && (
               <span className="notificationDot">{incomingRequests.length}</span>
             )}
@@ -2092,13 +2224,36 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 ×
               </button>
             </header>
+            <div className="notificationTools" aria-label="Notification controls">
+              <button
+                type="button"
+                onClick={enableDeviceNotifications}
+                disabled={notificationPermission === "granted" || notificationPermission === "unsupported"}
+              >
+                <BellRing size={14} />
+                {notificationPermission === "granted"
+                  ? "Phone alerts on"
+                  : notificationPermission === "unsupported"
+                    ? "Alerts unavailable"
+                    : "Enable phone alerts"}
+              </button>
+              <button
+                type="button"
+                onClick={markAllNotificationsSeen}
+                disabled={!unreadNotificationItems.length}
+              >
+                <CheckCheck size={14} /> Mark all seen
+              </button>
+            </div>
             <div className="notificationList">
-              {notificationItems.length ? (
-                notificationItems.map((item) => (
+              {unreadNotificationItems.length ? (
+                unreadNotificationItems.map((item) => (
                   <button key={item.id} onClick={() => openNotification(item)}>
                     <span className={`notificationIcon ${item.type}`}>
                       {item.type === "follow"
-                        ? <UserPlus size={15} />
+                        ? <Inbox size={15} />
+                        : item.type === "accepted"
+                          ? <UserCheck size={15} />
                         : item.type === "message"
                           ? <MessageCircle size={15} />
                           : <Heart size={15} />}
@@ -3041,6 +3196,34 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               <p className="eyebrow">YOUR COMMUNITY</p>
               <h2>People & chat</h2>
 
+              <nav className="socialActionNav" aria-label="Community actions">
+                <button
+                  type="button"
+                  onClick={() =>
+                    document.getElementById("people-directory")?.scrollIntoView({ behavior: "smooth" })
+                  }
+                >
+                  <UserPlus size={15} /> Follow
+                </button>
+                <button
+                  type="button"
+                  disabled={!incomingRequests.length}
+                  onClick={() =>
+                    document.getElementById("follow-requests")?.scrollIntoView({ behavior: "smooth" })
+                  }
+                >
+                  <Inbox size={15} /> Requests
+                  {incomingRequests.length > 0 && <b>{incomingRequests.length}</b>}
+                </button>
+                <button
+                  type="button"
+                  disabled={!connections.length}
+                  onClick={() => setActiveChat(activeChat || connections[0] || null)}
+                >
+                  <MessageCircle size={15} /> Chat
+                </button>
+              </nav>
+
               <div className="profileSummary">
                 <ProfileAvatar
                   person={{ displayName: currentName, photoURL: currentPhoto }}
@@ -3073,8 +3256,8 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               </div>
 
               {incomingRequests.length > 0 && (
-                <div className="requestSection">
-                  <h3>Requests</h3>
+                <div className="requestSection" id="follow-requests">
+                  <h3><Inbox size={14} /> Follow requests</h3>
                   {incomingRequests.map((request) => {
                     const person = people.find(
                       (item) => item.uid === request.from,
@@ -3085,11 +3268,19 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                         <ProfileAvatar person={person} tone="peach" />
                         <strong>{person.displayName}</strong>
                         <div className="requestActions">
-                          <button onClick={() => answerRequest(request, true)}>
-                            ✓
+                          <button
+                            className="acceptRequest"
+                            onClick={() => answerRequest(request, true)}
+                            aria-label={`Accept ${person.displayName}'s follow request`}
+                          >
+                            <UserCheck size={14} /> <span>Accept</span>
                           </button>
-                          <button onClick={() => answerRequest(request, false)}>
-                            ×
+                          <button
+                            className="declineRequest"
+                            onClick={() => answerRequest(request, false)}
+                            aria-label={`Decline ${person.displayName}'s follow request`}
+                          >
+                            <X size={14} /> <span>Decline</span>
                           </button>
                         </div>
                       </div>
@@ -3098,8 +3289,8 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 </div>
               )}
 
-              <div className="peopleSection">
-                <h3>{peopleSearch ? "Search results" : "Suggested people"}</h3>
+              <div className="peopleSection" id="people-directory">
+                <h3><UserPlus size={14} /> {peopleSearch ? "Search results" : "Suggested people"}</h3>
                 <div className="peopleSearch">
                   <span>@</span>
                   <input
@@ -3136,14 +3327,14 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                             className="personAction connected"
                             onClick={() => setActiveChat(person)}
                           >
-                            Chat
+                            <MessageCircle size={13} /> Chat
                           </button>
                         ) : status === "none" ? (
                           <button
                             className="personAction"
                             onClick={() => requestFollow(person)}
                           >
-                            Follow
+                            <UserPlus size={13} /> Follow
                           </button>
                         ) : status === "incoming" ? (
                           <button
@@ -3155,11 +3346,11 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                               if (request) answerRequest(request, true);
                             }}
                           >
-                            Accept
+                            <UserCheck size={13} /> Accept
                           </button>
                         ) : (
                           <button className="personAction muted" disabled>
-                            Pending
+                            <Clock3 size={13} /> Pending
                           </button>
                         )}
                       </div>
