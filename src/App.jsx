@@ -39,6 +39,7 @@ import { AchievementPanel, StoryGridSkeleton } from "./components/CommunityState
 import RoomHub from "./components/RoomHub";
 import { cleanText, escapeHTML, safeFileName } from "./lib/text";
 import {
+  ArrowLeft,
   Award,
   Bell,
   BellRing,
@@ -3427,6 +3428,17 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               {activeChat ? (
                 <>
                   <header className="chatHeader">
+                    <button
+                      className="chatBackButton"
+                      type="button"
+                      onClick={() => {
+                        setSocialTarget(incomingRequests.length ? "requests" : "people");
+                        setActiveChat(null);
+                      }}
+                      aria-label="Back to people and requests"
+                    >
+                      <ArrowLeft size={15} /> <span>Back</span>
+                    </button>
                     <ProfileAvatar person={activeChat} tone="sky" />
                     <div className="chatIdentity">
                       <strong>{activeChat.displayName}</strong>

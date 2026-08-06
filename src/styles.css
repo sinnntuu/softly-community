@@ -1902,6 +1902,25 @@ footer button {
   border-bottom: 1px solid rgba(103, 107, 100, 0.15);
 }
 
+.chatBackButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
+  box-shadow: 4px 4px 9px var(--shadow-dark), -4px -4px 9px var(--shadow-light);
+}
+
+.chatBackButton:hover { color: var(--accent); transform: translateX(-1px); }
+
 .chatIdentity {
   min-width: 0;
 }
@@ -2983,6 +3002,27 @@ footer button {
   .communityHero h1 { font-size: clamp(42px, 14vw, 56px); line-height: 1; }
   .achievementGrid { grid-template-columns: 1fr; }
   .starRating.compact .starIcons svg:nth-child(n + 6) { display: none; }
+  .storyActions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+    max-width: 100%;
+    gap: 6px;
+    margin-left: 0;
+  }
+  .storyActions > button,
+  .storyActions .commentButton,
+  .storyActions .likeButton,
+  .storyActions .bookmarkButton,
+  .storyActions .shareStoryButton,
+  .storyActions .downloadStoryButton {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    padding-inline: 4px;
+  }
+  .chatBackButton { width: 36px; min-width: 36px; padding: 0; }
+  .chatBackButton span { display: none; }
   .skeletonLine.title { height: 52px; }
   .statusPage { padding: 20px; }
   .statusPage section { border-radius: 24px; padding: 34px 22px; }
@@ -3492,7 +3532,7 @@ footer button {
 .roomRanking h3 { margin-top: 6px; }
 .roomRanking p { display: -webkit-box; overflow: hidden; margin: 9px 0; color: var(--muted); font-size: 10px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
 .roomRanking article > div > strong { color: var(--accent); font-size: 8px; line-height: 1.45; }
-.roomDownload { margin: 22px auto 0; }
+.roomDownload { max-width: 100%; margin: 22px auto 0; white-space: normal; text-align: center; }
 
 .roomParticipationHistory {
   margin-top: 22px;
