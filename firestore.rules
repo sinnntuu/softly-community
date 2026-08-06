@@ -16,6 +16,65 @@ service cloud.firestore {
       );
     }
 
+    function isRoomHost(roomId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId
+          == request.auth.uid;
+    }
+
+    function isRoomMember(roomId) {
+      return signedIn()
+        && exists(
+          /databases/$(database)/documents/rooms/$(roomId)/participants/$(request.auth.uid)
+        );
+    }
+
+    function validRoomSubmission(roomId, userId) {
+      return request.resource.data.keys().hasOnly([
+          "roomId", "userId", "displayName", "profilePhoto",
+          "title", "thought", "imageURL", "theme", "score",
+          "feedback", "createdAt", "updatedAt"
+        ])
+        && request.resource.data.keys().hasAll([
+          "roomId", "userId", "displayName", "profilePhoto",
+          "title", "thought", "imageURL", "theme", "score",
+          "feedback", "createdAt", "updatedAt"
+        ])
+        && request.resource.data.roomId == roomId
+        && request.resource.data.userId == userId
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 50
+        && request.resource.data.profilePhoto is string
+        && request.resource.data.profilePhoto.size() <= 180000
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 5
+        && request.resource.data.title.size() <= 100
+        && request.resource.data.thought is string
+        && request.resource.data.thought.size() >= 80
+        && request.resource.data.thought.size() <= 3000
+        && request.resource.data.imageURL is string
+        && request.resource.data.imageURL.size() <= 500000
+        && request.resource.data.imageURL.matches(
+          "^data:image/(jpeg|png|webp);base64,.*"
+        )
+        && request.resource.data.theme is string
+        && request.resource.data.theme in [
+          "Creative Expression", "Culture & Heritage", "Technology for Good",
+          "Life & Wellbeing", "Nature & Sustainability", "Student Innovation",
+          "Social Impact"
+        ]
+        && request.resource.data.score is int
+        && request.resource.data.score >= 1
+        && request.resource.data.score <= 10
+        && request.resource.data.feedback is string
+        && request.resource.data.feedback.size() >= 5
+        && request.resource.data.feedback.size() <= 260
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     function validUsername(userId) {
       return (
         !request.resource.data.keys().hasAny(["username", "usernameLower"])
@@ -339,6 +398,92 @@ service cloud.firestore {
           resource.data.from == request.auth.uid ||
           resource.data.to == request.auth.uid
         );
+    }
+
+    match /rooms/{roomId} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && roomId.matches("^[A-HJ-NP-Z2-9]{6}$")
+        && request.resource.data.keys().hasOnly([
+          "code", "title", "theme", "hostId", "hostName",
+          "status", "createdAt", "updatedAt"
+        ])
+        && request.resource.data.code == roomId
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.hostName is string
+        && request.resource.data.hostName.size() >= 2
+        && request.resource.data.hostName.size() <= 50
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 5
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.theme in [
+          "Creative Expression", "Culture & Heritage", "Technology for Good",
+          "Life & Wellbeing", "Nature & Sustainability", "Student Innovation",
+          "Social Impact"
+        ]
+        && request.resource.data.status == "open"
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if signedIn()
+        && resource.data.hostId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "winnerId", "winnerName", "winnerScore",
+          "judgedAt", "updatedAt"
+        ])
+        && resource.data.status == "open"
+        && request.resource.data.status == "complete"
+        && request.resource.data.winnerId is string
+        && request.resource.data.winnerName is string
+        && request.resource.data.winnerName.size() >= 2
+        && request.resource.data.winnerName.size() <= 50
+        && request.resource.data.winnerScore is int
+        && request.resource.data.winnerScore >= 1
+        && request.resource.data.winnerScore <= 10
+        && request.resource.data.judgedAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
+
+      match /participants/{userId} {
+        allow get: if signedIn() && (
+          request.auth.uid == userId || isRoomHost(roomId) || isRoomMember(roomId)
+        );
+        allow list: if isRoomHost(roomId) || isRoomMember(roomId);
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && exists(/databases/$(database)/documents/rooms/$(roomId))
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.status
+            == "open"
+          && request.resource.data.keys().hasOnly([
+            "roomId", "userId", "displayName", "photoURL", "joinedAt"
+          ])
+          && request.resource.data.roomId == roomId
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() >= 2
+          && request.resource.data.displayName.size() <= 50
+          && request.resource.data.photoURL is string
+          && request.resource.data.photoURL.size() <= 180000
+          && request.resource.data.joinedAt is timestamp;
+        allow update, delete: if false;
+      }
+
+      match /submissions/{userId} {
+        allow read: if isRoomHost(roomId) || isRoomMember(roomId);
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && isRoomMember(roomId)
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.status
+            == "open"
+          && validRoomSubmission(roomId, userId);
+        allow update: if signedIn()
+          && request.auth.uid == userId
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.status
+            == "open"
+          && request.resource.data.createdAt == resource.data.createdAt
+          && validRoomSubmission(roomId, userId);
+        allow delete: if false;
+      }
     }
 
     match /messages/{messageId} {

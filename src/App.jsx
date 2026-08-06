@@ -36,6 +36,7 @@ import {
 } from "./firebase";
 import { ThemeToggle } from "./components/Experience";
 import { AchievementPanel, StoryGridSkeleton } from "./components/CommunityStates";
+import RoomHub from "./components/RoomHub";
 import { cleanText, escapeHTML, safeFileName } from "./lib/text";
 import {
   Award,
@@ -66,6 +67,7 @@ import {
   Star,
   Trophy,
   UserPlus,
+  UsersRound,
   Video,
   X,
 } from "lucide-react";
@@ -580,6 +582,7 @@ export default function App() {
   const [storyPublishing, setStoryPublishing] = useState(false);
   const [callStarting, setCallStarting] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [roomOpen, setRoomOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [seenNotifications, setSeenNotifications] = useState([]);
   const knownNotificationIds = useRef(new Set());
@@ -623,6 +626,7 @@ export default function App() {
       profileOpen ||
       socialOpen ||
       notificationsOpen ||
+      roomOpen ||
       Boolean(postToDelete) ||
       accountDeleteOpen;
     if (!overlayOpen) return;
@@ -642,6 +646,7 @@ export default function App() {
       if (event.key === "Escape") {
         if (accountDeleting || postDeleting || storyPublishing || profileSaving) return;
         setNotificationsOpen(false);
+        setRoomOpen(false);
         setComposerOpen(false);
         setProfileOpen(false);
         setSocialOpen(false);
@@ -673,6 +678,7 @@ export default function App() {
     profileOpen,
     socialOpen,
     notificationsOpen,
+    roomOpen,
     postToDelete,
     accountDeleteOpen,
     accountDeleting,
@@ -2026,6 +2032,17 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         >
           <a href="#stories" onClick={() => setMobileNavOpen(false)}>Stories</a>
           <button
+            className="navTextButton navRoomButton"
+            onClick={() =>
+              requireUser(() => {
+                setRoomOpen(true);
+                setMobileNavOpen(false);
+              })
+            }
+          >
+            <UsersRound size={15} /> Rooms
+          </button>
+          <button
             className="navTextButton"
             onClick={() =>
               requireUser(() => {
@@ -2193,6 +2210,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               onClick={() => requireUser(() => setComposerOpen(true))}
             >
               Participate now ↗
+            </button>
+            <button
+              className="secondaryAction roomEventButton"
+              onClick={() => requireUser(() => setRoomOpen(true))}
+            >
+              <UsersRound size={15} /> Create or join room
             </button>
             <span>{themeOptions.length} themes · live ranking</span>
           </div>
@@ -2610,6 +2633,9 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             <button onClick={() => requireUser(() => setComposerOpen(true))}>
               Write a story
             </button>
+            <button onClick={() => requireUser(() => setRoomOpen(true))}>
+              Thought rooms
+            </button>
             {user && <button onClick={openProfileEditor}>Your profile</button>}
           </div>
           <div className="footerNote">
@@ -2638,6 +2664,19 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           <strong>{Math.min(unreadMessages, 9)}</strong>
         )}
       </m.button>
+
+      {roomOpen && user && db && (
+        <RoomHub
+          db={db}
+          user={user}
+          profile={profile}
+          themeOptions={themeOptions}
+          analyzeThought={meaningfulnessAnalysis}
+          preparePhoto={compressStoryPhoto}
+          onClose={() => setRoomOpen(false)}
+          onNotice={setNotice}
+        />
+      )}
 
       {composerOpen && (
         <div className="modalBackdrop">
