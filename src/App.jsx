@@ -255,7 +255,42 @@ const initials = (name = "Softly writer") =>
     .join("")
     .toUpperCase();
 
-const timeValue = (value) => value?.toMillis?.() ?? 0;
+const timeValue = (value) =>
+  value?.toMillis?.() ??
+  (value instanceof Date ? value.getTime() : typeof value === "number" ? value : 0);
+
+const relativeChatTime = (value) => {
+  const timestamp = timeValue(value);
+  if (!timestamp) return "New";
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return "Now";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const chatMessagePreview = (item, currentUserId) => {
+  if (!item) return "Connected — start a conversation";
+  const labels = {
+    photo: "Shared a photo",
+    video: "Shared a video",
+    link: "Shared a link",
+    audio_call: "Started an audio call",
+    video_call: "Started a video call",
+  };
+  const content =
+    item.messageType === "text"
+      ? item.text || "Sent a message"
+      : labels[item.messageType] || "Sent a message";
+  return `${item.senderId === currentUserId ? "You: " : ""}${content}`.slice(0, 76);
+};
 const chatId = (a, b) => [a, b].sort().join("_");
 const callURL = (room, type = "video") => {
   const base = `https://meet.jit.si/${encodeURIComponent(room)}`;
@@ -635,6 +670,7 @@ export default function App() {
   const [accountDeleteText, setAccountDeleteText] = useState("");
   const [accountDeleting, setAccountDeleting] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState("");
+  const [chatSearch, setChatSearch] = useState("");
   const [activeChat, setActiveChat] = useState(previewConnection);
   const [message, setMessage] = useState("");
   const [attachmentOpen, setAttachmentOpen] = useState(false);
@@ -1178,6 +1214,40 @@ export default function App() {
   const unreadMessages = unreadNotificationItems.filter(
     (item) => item.type === "message",
   ).length;
+  const chatThreads = useMemo(() => {
+    const term = chatSearch.trim().toLowerCase();
+    const unreadByPerson = unreadNotificationItems.reduce((counts, item) => {
+      if (item.type === "message" && item.actorId) {
+        counts[item.actorId] = (counts[item.actorId] || 0) + 1;
+      }
+      return counts;
+    }, {});
+
+    return connections
+      .map((person) => {
+        const latestMessage = allMessages
+          .filter((item) => item.participants?.includes(person.uid))
+          .sort((a, b) => timeValue(b.createdAt) - timeValue(a.createdAt))[0];
+        return {
+          ...person,
+          latestMessage,
+          preview: chatMessagePreview(latestMessage, user?.uid),
+          unread: unreadByPerson[person.uid] || 0,
+          timestamp: timeValue(latestMessage?.createdAt),
+        };
+      })
+      .filter((person) =>
+        !term ||
+        `${person.displayName || ""} ${person.username || ""} ${person.preview}`
+          .toLowerCase()
+          .includes(term),
+      )
+      .sort(
+        (a, b) =>
+          b.timestamp - a.timestamp ||
+          (a.displayName || "").localeCompare(b.displayName || ""),
+      );
+  }, [connections, allMessages, chatSearch, unreadNotificationItems, user?.uid]);
 
   useEffect(() => {
     knownNotificationIds.current = new Set();
@@ -1364,17 +1434,8 @@ export default function App() {
     requireUser(() => {
       setNotificationsOpen(false);
       setSocialTarget("chat");
+      setActiveChat(null);
       setSocialOpen(true);
-      if (!activeChat && connections.length) {
-        const latest = [...allMessages].sort(
-          (a, b) => timeValue(b.createdAt) - timeValue(a.createdAt),
-        )[0];
-        const latestOtherId = latest?.participants?.find((uid) => uid !== user.uid);
-        setActiveChat(
-          connections.find((person) => person.uid === latestOtherId) ||
-            connections[0],
-        );
-      }
     });
 
   const openSocialSection = (target) =>
@@ -3431,11 +3492,8 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                     <button
                       className="chatBackButton"
                       type="button"
-                      onClick={() => {
-                        setSocialTarget(incomingRequests.length ? "requests" : "people");
-                        setActiveChat(null);
-                      }}
-                      aria-label="Back to people and requests"
+                      onClick={() => setActiveChat(null)}
+                      aria-label="Back to messages"
                     >
                       <ArrowLeft size={15} /> <span>Back</span>
                     </button>
@@ -3674,26 +3732,84 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                   </form>
                 </>
               ) : (
-                <div className="chatPlaceholder">
-                  <div className="floatingHeart">♥</div>
-                  <h3>Choose a connection</h3>
-                  <p>
-                    Accept a follow request or connect with someone to start a
-                    private conversation.
-                  </p>
-                  {connections.length > 0 && (
-                    <div className="connectionChips">
-                      {connections.map((person) => (
+                <section className="chatInbox" aria-label="Messages inbox">
+                  <header className="chatInboxHeader">
+                    <div>
+                      <span>PRIVATE MESSAGES</span>
+                      <h3>Messages</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSocialTarget("people")}
+                      aria-label="Find someone to message"
+                    >
+                      <UserPlus size={16} /> <span>New</span>
+                    </button>
+                  </header>
+
+                  <nav className="chatInboxTabs" aria-label="Message folders">
+                    <button className="active" type="button">All</button>
+                    <button type="button" onClick={() => setSocialTarget("requests")}>
+                      Requests
+                      {incomingRequests.length > 0 && <b>{incomingRequests.length}</b>}
+                    </button>
+                    <button type="button" onClick={() => setSocialTarget("people")}>
+                      Find people
+                    </button>
+                  </nav>
+
+                  <label className="chatInboxSearch">
+                    <SearchIcon size={17} aria-hidden="true" />
+                    <input
+                      value={chatSearch}
+                      onChange={(event) => setChatSearch(event.target.value)}
+                      placeholder="Search conversations"
+                      aria-label="Search conversations"
+                    />
+                  </label>
+
+                  <div className="chatThreadList">
+                    {chatThreads.length ? (
+                      chatThreads.map((person) => (
                         <button
+                          className="chatThread"
+                          type="button"
                           key={person.uid}
                           onClick={() => setActiveChat(person)}
                         >
-                          {initials(person.displayName)} {person.displayName}
+                          <ProfileAvatar person={person} tone="sky" />
+                          <span className="chatThreadCopy">
+                            <strong>{person.displayName}</strong>
+                            <small>{person.preview}</small>
+                          </span>
+                          <span className="chatThreadMeta">
+                            <time>{relativeChatTime(person.latestMessage?.createdAt)}</time>
+                            {person.unread > 0 && (
+                              <b aria-label={`${person.unread} unread messages`}>
+                                {person.unread > 9 ? "9+" : person.unread}
+                              </b>
+                            )}
+                          </span>
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      ))
+                    ) : (
+                      <div className="chatInboxEmpty">
+                        <MessageCircle size={28} />
+                        <strong>{chatSearch ? "No conversations found" : "Your inbox is ready"}</strong>
+                        <p>
+                          {chatSearch
+                            ? "Try another name or username."
+                            : "Connect with someone, then start a private conversation here."}
+                        </p>
+                        {!chatSearch && (
+                          <button type="button" onClick={() => setSocialTarget("people")}>
+                            Find people
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </section>
               )}
             </div>
           </section>
