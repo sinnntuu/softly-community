@@ -400,6 +400,30 @@ service cloud.firestore {
         );
     }
 
+    match /roomHistory/{userId}/rooms/{roomId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn()
+        && request.auth.uid == userId
+        && roomId.matches("^[A-HJ-NP-Z2-9]{6}$")
+        && request.resource.data.keys().hasOnly([
+          "roomId", "title", "role", "status", "hostName",
+          "savedAt", "lastOpenedAt"
+        ])
+        && request.resource.data.roomId == roomId
+        && request.resource.data.title is string
+        && request.resource.data.title.size() >= 5
+        && request.resource.data.title.size() <= 80
+        && request.resource.data.role in ["host", "participant"]
+        && request.resource.data.status in ["open", "closed", "complete"]
+        && request.resource.data.hostName is string
+        && request.resource.data.hostName.size() >= 2
+        && request.resource.data.hostName.size() <= 50
+        && request.resource.data.savedAt is timestamp
+        && request.resource.data.lastOpenedAt is timestamp;
+      allow delete: if signedIn()
+        && (request.auth.uid == userId || isRoomHost(roomId));
+    }
+
     match /rooms/{roomId} {
       allow get: if signedIn();
       allow list: if false;

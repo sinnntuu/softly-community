@@ -65,7 +65,6 @@ import {
   Share2,
   Sparkles,
   Star,
-  Trophy,
   UserPlus,
   UsersRound,
   Video,
@@ -974,45 +973,6 @@ export default function App() {
     () => new Set(bookmarks.map((item) => item.postId)),
     [bookmarks],
   );
-  const leaderboardEntries = useMemo(() => {
-    const bestByWriter = new Map();
-    posts.forEach((post) => {
-      const analysis = meaningfulnessAnalysis(post);
-      const liveAuthor =
-        post.authorId === user?.uid
-          ? profile
-          : people.find((person) => person.uid === post.authorId);
-      const entry = {
-        postId: post.id,
-        authorId: post.authorId,
-        authorName:
-          liveAuthor?.displayName || post.authorName || "Softly writer",
-        username: liveAuthor?.username || post.authorUsername || "",
-        photoURL: liveAuthor?.photoURL || post.authorPhoto || "",
-        title: post.title,
-        theme: storyTheme(post),
-        stars: analysis.stars,
-        analysis,
-        createdAt: post.createdAt,
-      };
-      const current = bestByWriter.get(post.authorId);
-      if (
-        !current ||
-        entry.stars > current.stars ||
-        (entry.stars === current.stars &&
-          timeValue(entry.createdAt) > timeValue(current.createdAt))
-      ) {
-        bestByWriter.set(post.authorId, entry);
-      }
-    });
-    return [...bestByWriter.values()]
-      .sort(
-        (a, b) =>
-          b.stars - a.stars ||
-          timeValue(b.createdAt) - timeValue(a.createdAt),
-      )
-      .slice(0, 3);
-  }, [posts, people, profile, user]);
   const achievements = useMemo(() => {
     const ownPosts = posts.filter((post) => post.authorId === user?.uid);
     const ownPostIds = new Set(ownPosts.map((post) => post.id));
@@ -2040,7 +2000,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               })
             }
           >
-            <UsersRound size={15} /> Rooms
+            <UsersRound size={15} /> Challenges
           </button>
           <button
             className="navTextButton"
@@ -2195,119 +2155,41 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
       </m.section>
 
-      <m.section className="eventChallenge shell" id="challenge" {...revealMotion}>
-        <div className="eventIntro">
-          <p className="eyebrow">LIVE COMMUNITY EVENT</p>
-          <h2>Choose a theme. Share your perspective.</h2>
+      <m.section className="challengeOption shell" id="challenge" {...revealMotion}>
+        <span className="challengeOptionIcon"><UsersRound size={24} /></span>
+        <div>
+          <p className="eyebrow">OPTIONAL FOR SCHOOLS & COLLEGES</p>
+          <h2>Run a private thought and photo challenge.</h2>
           <p>
-            Pick an inbuilt theme, add an original photo and publish your
-            story or thoughts. The Top 3 updates live from story meaningfulness,
-            not popularity.
+            Softly stays a simple blogging community. When an institution wants an
+            activity, an organizer can create a code-based room, invite participants,
+            save the complete history and reveal a meaningfulness-ranked result.
           </p>
-          <div className="eventActions">
-            <button
-              className="primaryAction"
-              onClick={() => requireUser(() => setComposerOpen(true))}
-            >
-              Participate now ↗
-            </button>
-            <button
-              className="secondaryAction roomEventButton"
-              onClick={() => requireUser(() => setRoomOpen(true))}
-            >
-              <UsersRound size={15} /> Create or join room
-            </button>
-            <span>{themeOptions.length} themes · live ranking</span>
-          </div>
-          <div className="themeDeck" aria-label="Built-in event themes">
-            {themeOptions.map((item) => {
-              const ThemeIcon = item.icon;
-              return (
-                <button
-                  type="button"
-                  key={item.name}
-                  className={themeFilter === item.name ? "active" : ""}
-                  onClick={() => {
-                    setThemeFilter(item.name);
-                    document.getElementById("stories")?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  title={item.description}
-                >
-                  <span><ThemeIcon size={15} strokeWidth={1.8} /></span>
-                  {item.name}
-                </button>
-              );
-            })}
-          </div>
         </div>
-
-        <div className="leaderboardCard">
-          <header>
-            <div>
-              <p className="eyebrow leaderboardEyebrow"><Trophy size={13} /> TOP PARTICIPANTS</p>
-              <h3>Live Top 3</h3>
-            </div>
-            <span className="liveBadge"><Sparkles size={11} /> AI RANKED</span>
-          </header>
-          {leaderboardEntries.length ? (
-            <div className="leaderboardList">
-              {leaderboardEntries.map((entry, index) => (
-                <button
-                  type="button"
-                  key={entry.authorId}
-                  className={`leaderboardEntry rank${index + 1}`}
-                  onClick={() => {
-                    setExpanded(entry.postId);
-                    document.getElementById(`story-${entry.postId}`)?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "center",
-                    });
-                  }}
-                >
-                  <span className="rankMedal">{["1", "2", "3"][index]}</span>
-                  <ProfileAvatar
-                    person={{
-                      displayName: entry.authorName,
-                      photoURL: entry.photoURL,
-                    }}
-                    tone={tones[index]}
-                  />
-                  <span className="leaderIdentity">
-                    <strong>
-                      {entry.username ? `@${entry.username}` : entry.authorName}
-                    </strong>
-                    <small>{entry.theme}</small>
-                  </span>
-                  <StarRating value={entry.stars} compact />
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="leaderboardEmpty">
-              <strong>The podium is open.</strong>
-              <span>Publish the first themed entry to take the lead.</span>
-            </div>
-          )}
-          <p className="scoringNote">
-            Ranking ignores likes. The private analyzer reads theme relevance,
-            depth, reflection, specificity and usefulness, then awards up to 10 stars.
-          </p>
+        <div className="challengeOptionActions">
+          <button
+            className="secondaryAction roomEventButton"
+            onClick={() => requireUser(() => setRoomOpen(true))}
+          >
+            <UsersRound size={15} /> Open challenge rooms
+          </button>
+          <span>Private code · photo entries · saved history</span>
         </div>
       </m.section>
 
       <m.section className="stories shell" id="stories" {...revealMotion}>
         <div className="sectionHead">
           <div>
-            <p className="eyebrow">THEME CHALLENGE ENTRIES</p>
-            <h2>Stories in the event</h2>
+            <p className="eyebrow">FROM THE COMMUNITY</p>
+            <h2>Fresh stories</h2>
           </div>
           <div className="searchField">
-            <label htmlFor="search">Search entries</label>
+            <label htmlFor="search">Search stories</label>
             <input
               id="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search themes, stories or usernames"
+              placeholder="Search topics, stories or usernames"
             />
             <span><SearchIcon size={16} /></span>
             {searchSuggestions.length > 0 && (
@@ -2323,7 +2205,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
 
         <div className="discoveryControls">
-          <div className="filters" aria-label="Event themes">
+          <div className="filters" aria-label="Story topics">
             {themes.map((item) => (
               <button
                 key={item}
@@ -2634,7 +2516,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
               Write a story
             </button>
             <button onClick={() => requireUser(() => setRoomOpen(true))}>
-              Thought rooms
+              Challenge rooms
             </button>
             {user && <button onClick={openProfileEditor}>Your profile</button>}
           </div>
@@ -2684,12 +2566,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             <button className="modalClose" onClick={() => setComposerOpen(false)}>
               ×
             </button>
-            <p className="eyebrow">THEME CHALLENGE ENTRY</p>
-            <h2>Share your perspective.</h2>
+            <p className="eyebrow">NEW STORY</p>
+            <h2>Share an idea.</h2>
             <form onSubmit={publish}>
               <div className="themeTemplatePicker">
                 <label>
-                  Choose your theme
+                  Choose a topic
                   <select
                     value={draft.theme}
                     onChange={(event) =>

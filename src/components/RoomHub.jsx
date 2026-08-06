@@ -5,6 +5,7 @@ import {
   Copy,
   Crown,
   Download,
+  History,
   ImagePlus,
   Lock,
   LogIn,
@@ -93,6 +94,8 @@ export default function RoomHub({
   const [room, setRoom] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [submissions, setSubmissions] = useState([]);
+  const [roomHistory, setRoomHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [loading, setLoading] = useState(Boolean(activeCode));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -109,6 +112,24 @@ export default function RoomHub({
 
   const displayName = profile?.displayName || user.displayName || "Softly writer";
   const profilePhoto = profile?.photoURL || user.photoURL || "";
+
+  useEffect(() => {
+    const historyQuery = query(
+      collection(db, "roomHistory", user.uid, "rooms"),
+      orderBy("lastOpenedAt", "desc"),
+    );
+    return onSnapshot(
+      historyQuery,
+      (snapshot) => {
+        setRoomHistory(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setHistoryLoading(false);
+      },
+      () => {
+        setRoomHistory([]);
+        setHistoryLoading(false);
+      },
+    );
+  }, [db, user.uid]);
 
   useEffect(() => {
     if (!activeCode) {
@@ -186,6 +207,25 @@ export default function RoomHub({
     }
   }, [activeParticipant?.theme, ownSubmission?.theme, room?.theme, themeOptions]);
 
+  useEffect(() => {
+    if (!room?.id || !activeCode) return;
+    setDoc(
+      doc(db, "roomHistory", user.uid, "rooms", activeCode),
+      {
+        roomId: activeCode,
+        title: room.title,
+        role: room.hostId === user.uid ? "host" : "participant",
+        status: room.status,
+        hostName: room.hostName,
+        savedAt: activeParticipant?.joinedAt || room.createdAt || serverTimestamp(),
+        lastOpenedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ).catch(() => {
+      // Room access still works if history sync is temporarily unavailable.
+    });
+  }, [activeCode, activeParticipant?.joinedAt, db, room?.hostId, room?.hostName, room?.id, room?.status, room?.title, room?.createdAt, user.uid]);
+
   const ranking = useMemo(
     () =>
       submissions
@@ -227,6 +267,21 @@ export default function RoomHub({
       // The live room still works when private browsing blocks storage.
     }
   };
+
+  const saveHistoryEntry = (code, roomData, role) =>
+    setDoc(
+      doc(db, "roomHistory", user.uid, "rooms", code),
+      {
+        roomId: code,
+        title: roomData.title,
+        role,
+        status: roomData.status || "open",
+        hostName: roomData.hostName,
+        savedAt: serverTimestamp(),
+        lastOpenedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
 
   const leaveRoomView = () => {
     setActiveCode("");
@@ -284,6 +339,11 @@ export default function RoomHub({
         theme: "Student Innovation",
         joinedAt: serverTimestamp(),
       });
+      await saveHistoryEntry(
+        code,
+        { title, hostName: displayName, status: "open" },
+        "host",
+      );
       saveActiveCode(code);
       onNotice(`Room ${code} is ready. Share the code with participants.`);
     } catch (roomError) {
@@ -327,6 +387,7 @@ export default function RoomHub({
           joinedAt: serverTimestamp(),
         });
       }
+      await saveHistoryEntry(code, roomSnapshot.data(), roomSnapshot.data().hostId === user.uid ? "host" : "participant");
       setEntryTheme(participantSnapshot.data()?.theme || joinTheme);
       saveActiveCode(code);
       onNotice(`Joined room ${code} with the ${participantSnapshot.data()?.theme || joinTheme} theme.`);
@@ -455,6 +516,9 @@ export default function RoomHub({
         ...submissions.map((item) =>
           doc(db, "rooms", activeCode, "submissions", item.id),
         ),
+        ...participants.map((item) =>
+          doc(db, "roomHistory", item.userId, "rooms", activeCode),
+        ),
       ];
       for (let start = 0; start < childRefs.length; start += 400) {
         const batch = writeBatch(db);
@@ -543,11 +607,11 @@ export default function RoomHub({
             <header className="roomHero">
               <span className="roomHeroIcon"><UsersRound size={26} /></span>
               <div>
-                <p className="eyebrow">LIVE THOUGHT ROOMS</p>
-                <h2 id="room-hub-title">Create together. Discover the strongest idea.</h2>
+                <p className="eyebrow">SCHOOL & COLLEGE CHALLENGES</p>
+                <h2 id="room-hub-title">Host a thoughtful photo challenge.</h2>
                 <p>
-                  Invite participants with one code, collect picture-led thoughts,
-                  then reveal a meaningfulness-ranked result.
+                  Create a private room, share one code with participants, collect
+                  picture-led thoughts and reveal a meaningfulness-ranked result.
                 </p>
               </div>
             </header>
@@ -555,8 +619,8 @@ export default function RoomHub({
             <div className="roomLobbyGrid">
               <form className="roomActionCard" onSubmit={createRoom}>
                 <span className="roomCardIcon"><Plus size={20} /></span>
-                <h3>Create a room</h3>
-                <p>You become the host. Participants choose their own theme when joining.</p>
+                <h3>Create a challenge</h3>
+                <p>You become the organizer. Participants choose their own theme when joining.</p>
                 <label>
                   Room title
                   <input
@@ -565,19 +629,19 @@ export default function RoomHub({
                       setCreateDraft((current) => ({ ...current, title: event.target.value }))
                     }
                     maxLength={80}
-                    placeholder="Campus ideas challenge"
+                    placeholder="Inter-school ideas challenge"
                     required
                   />
                 </label>
                 <button className="primaryAction" disabled={busy}>
-                  <Plus size={15} /> {busy ? "Creating…" : "Create room"}
+                  <Plus size={15} /> {busy ? "Creating…" : "Create challenge"}
                 </button>
               </form>
 
               <form className="roomActionCard" onSubmit={joinRoom}>
                 <span className="roomCardIcon"><LogIn size={20} /></span>
-                <h3>Join with a code</h3>
-                <p>Ask the host for the six-character code shown inside their room.</p>
+                <h3>Join a challenge</h3>
+                <p>Enter the six-character code shared by your school or college organizer.</p>
                 <label>
                   Room code
                   <input
@@ -616,6 +680,38 @@ export default function RoomHub({
                 </button>
               </form>
             </div>
+
+            <section className="roomHistorySection" aria-labelledby="room-history-title">
+              <header>
+                <div>
+                  <p className="eyebrow">SAVED ACTIVITY</p>
+                  <h3 id="room-history-title"><History size={18} /> Your challenge history</h3>
+                </div>
+                <span>Completed rooms stay saved until the organizer permanently deletes them.</span>
+              </header>
+              {historyLoading ? (
+                <div className="roomHistoryEmpty">Loading your rooms…</div>
+              ) : roomHistory.length ? (
+                <div className="roomHistoryList">
+                  {roomHistory.map((item) => (
+                    <button key={item.roomId} type="button" onClick={() => saveActiveCode(item.roomId)}>
+                      <span className={`roomHistoryStatus ${item.status || "open"}`}>
+                        {item.status === "complete" ? "Result ready" : item.status === "closed" ? "Closed" : "Open"}
+                      </span>
+                      <span>
+                        <strong>{item.title}</strong>
+                        <small>{item.role === "host" ? "Organizer" : "Participant"} · Hosted by {item.hostName}</small>
+                      </span>
+                      <b>{item.roomId} →</b>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="roomHistoryEmpty">
+                  Your created and joined challenge rooms will appear here.
+                </div>
+              )}
+            </section>
           </div>
         ) : loading ? (
           <div className="roomLoading" aria-live="polite">
@@ -806,6 +902,34 @@ export default function RoomHub({
                     </article>
                   ))}
                 </div>
+                {isHost && (
+                  <section className="roomParticipationHistory">
+                    <header>
+                      <div>
+                        <p className="eyebrow">ORGANIZER RECORD</p>
+                        <h3>Participation history</h3>
+                      </div>
+                      <span>{participants.length} joined · {submissions.length} submitted</span>
+                    </header>
+                    <div>
+                      {participants.map((participant) => {
+                        const entry = submissions.find((item) => item.userId === participant.userId);
+                        return (
+                          <article key={participant.userId}>
+                            <RoomAvatar name={participant.displayName} photoURL={participant.photoURL} />
+                            <span>
+                              <strong>{participant.displayName}</strong>
+                              <small>{participant.theme || entry?.theme || "Theme not selected"}</small>
+                            </span>
+                            <b className={entry ? "submitted" : "waiting"}>
+                              {entry ? "Submitted" : "No entry"}
+                            </b>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
                 <button className="primaryAction roomDownload" type="button" onClick={downloadResults}>
                   <Download size={16} /> Download complete result
                 </button>
@@ -818,7 +942,7 @@ export default function RoomHub({
                   <strong>Host controls</strong>
                   <span>
                     {isComplete
-                      ? "The result is final. You can still delete this room."
+                      ? "The result and participant history stay saved until you permanently delete this room."
                       : isClosed
                         ? ranking.length >= 2
                           ? "Room is closed. Submitted entries are ready for analysis."
@@ -840,7 +964,7 @@ export default function RoomHub({
                     </button>
                   )}
                   <button className="roomDangerButton" type="button" onClick={deleteRoom} disabled={busy}>
-                    <Trash2 size={15} /> Delete room
+                    <Trash2 size={15} /> Delete permanently
                   </button>
                 </div>
               </div>
