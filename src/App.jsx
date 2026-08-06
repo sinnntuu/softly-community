@@ -618,6 +618,7 @@ export default function App() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [socialTarget, setSocialTarget] = useState("people");
   const [seenNotifications, setSeenNotifications] = useState([]);
   const [notificationPermission, setNotificationPermission] = useState(() =>
     typeof window !== "undefined" && "Notification" in window
@@ -626,6 +627,7 @@ export default function App() {
   );
   const knownNotificationIds = useRef(new Set());
   const notificationsReady = useRef(false);
+  const messageListRef = useRef(null);
   const [postToDelete, setPostToDelete] = useState(null);
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
@@ -930,6 +932,31 @@ export default function App() {
       },
     );
   }, [user, activeChat]);
+
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!socialOpen || socialTarget !== "chat" || !messageList) return;
+    const frame = window.requestAnimationFrame(() => {
+      messageList.scrollTo({
+        top: messageList.scrollHeight,
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, activeChat, socialOpen, socialTarget, reduceMotion]);
+
+  useEffect(() => {
+    if (!socialOpen || !["requests", "accept"].includes(socialTarget)) return;
+    const timer = window.setTimeout(() => {
+      document
+        .getElementById("follow-requests")
+        ?.scrollIntoView({
+          behavior: reduceMotion ? "auto" : "smooth",
+          block: "start",
+        });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [socialOpen, socialTarget, reduceMotion]);
 
   const likesByPost = useMemo(() => {
     const result = {};
@@ -1263,6 +1290,9 @@ export default function App() {
       document.getElementById("stories")?.scrollIntoView({ behavior: "smooth" });
       return;
     }
+    setSocialTarget(
+      item.type === "message" || item.type === "accepted" ? "chat" : "requests",
+    );
     setSocialOpen(true);
     if (item.type === "message" || item.type === "accepted") {
       setActiveChat(people.find((person) => person.uid === item.actorId) || null);
@@ -1332,6 +1362,7 @@ export default function App() {
   const openChatPanel = () =>
     requireUser(() => {
       setNotificationsOpen(false);
+      setSocialTarget("chat");
       setSocialOpen(true);
       if (!activeChat && connections.length) {
         const latest = [...allMessages].sort(
@@ -1343,6 +1374,14 @@ export default function App() {
             connections[0],
         );
       }
+    });
+
+  const openSocialSection = (target) =>
+    requireUser(() => {
+      setNotificationsOpen(false);
+      setSocialTarget(target);
+      setSocialOpen(true);
+      if (target !== "chat") setActiveChat(null);
     });
 
   const openProfileEditor = () => {
@@ -2138,6 +2177,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             className="navTextButton"
             onClick={() =>
               requireUser(() => {
+                setSocialTarget("people");
                 setSocialOpen(true);
                 setActiveChat(null);
                 setMobileNavOpen(false);
@@ -2637,7 +2677,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             and chat privately with your connections.
           </p>
         </div>
-        <button className="primaryAction" onClick={user ? () => setSocialOpen(true) : login}>
+        <button className="primaryAction" onClick={() => openSocialSection("people")}>
           {user ? "Find people ↗" : "Continue with Google ↗"}
         </button>
       </m.section>
@@ -2663,7 +2703,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           </div>
           <div>
             <strong>Community</strong>
-            <button onClick={() => requireUser(() => setSocialOpen(true))}>
+            <button onClick={() => openSocialSection("people")}>
               Discover people
             </button>
             <button onClick={() => requireUser(() => setComposerOpen(true))}>
@@ -2686,20 +2726,61 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </div>
       </footer>
 
-      <m.button
-        type="button"
-        className="floatingChatButton"
-        onClick={openChatPanel}
-        aria-label={`Open chat${unreadMessages ? `, ${unreadMessages} new messages` : ""}`}
-        whileHover={reduceMotion ? undefined : { y: -3, scale: 1.02 }}
-        whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+      <m.nav
+        className="communityDock"
+        aria-label="Community shortcuts"
+        initial={reduceMotion ? false : { opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
       >
-        <span className="chatGlyph" aria-hidden="true"><MessageCircle size={18} /></span>
-        <span>Messages</span>
-        {unreadMessages > 0 && (
-          <strong>{Math.min(unreadMessages, 9)}</strong>
-        )}
-      </m.button>
+        <button
+          type="button"
+          className={socialOpen && socialTarget === "chat" ? "active" : ""}
+          onClick={openChatPanel}
+          aria-label={`Open chat${unreadMessages ? `, ${unreadMessages} new messages` : ""}`}
+        >
+          <MessageCircle size={18} />
+          <span>Chat</span>
+          {unreadMessages > 0 && <b>{Math.min(unreadMessages, 9)}</b>}
+        </button>
+        <button
+          type="button"
+          className={socialOpen && socialTarget === "people" ? "active" : ""}
+          onClick={() => openSocialSection("people")}
+          aria-label="Find people to follow"
+        >
+          <UserPlus size={18} />
+          <span>Follow</span>
+        </button>
+        <button
+          type="button"
+          className={socialOpen && socialTarget === "requests" ? "active" : ""}
+          onClick={() => openSocialSection("requests")}
+          aria-label={`Open follow requests${incomingRequests.length ? `, ${incomingRequests.length} pending` : ""}`}
+        >
+          <Inbox size={18} />
+          <span>Requests</span>
+          {incomingRequests.length > 0 && <b>{Math.min(incomingRequests.length, 9)}</b>}
+        </button>
+        <button
+          type="button"
+          className={socialOpen && socialTarget === "accept" ? "active" : ""}
+          onClick={() => openSocialSection("accept")}
+          aria-label="Review and accept follow requests"
+        >
+          <UserCheck size={18} />
+          <span>Accept</span>
+        </button>
+        <button
+          type="button"
+          className={notificationsOpen ? "active" : ""}
+          onClick={() => requireUser(openNotifications)}
+          aria-label={`Open notifications${unreadNotifications ? `, ${unreadNotifications} new` : ""}`}
+        >
+          <Bell size={18} />
+          <span>Alerts</span>
+          {unreadNotifications > 0 && <b>{Math.min(unreadNotifications, 9)}</b>}
+        </button>
+      </m.nav>
 
       {roomOpen && user && db && (
         <RoomHub
@@ -3182,7 +3263,11 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
 
       {socialOpen && user && (
         <div className="modalBackdrop">
-          <section className="socialPanel" role="dialog" aria-modal="true">
+          <section
+            className={`socialPanel ${socialTarget === "chat" ? "chatFocus" : "directoryFocus"}`}
+            role="dialog"
+            aria-modal="true"
+          >
             <button
               className="modalClose"
               onClick={() => {
@@ -3195,34 +3280,6 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             <div className="socialSidebar">
               <p className="eyebrow">YOUR COMMUNITY</p>
               <h2>People & chat</h2>
-
-              <nav className="socialActionNav" aria-label="Community actions">
-                <button
-                  type="button"
-                  onClick={() =>
-                    document.getElementById("people-directory")?.scrollIntoView({ behavior: "smooth" })
-                  }
-                >
-                  <UserPlus size={15} /> Follow
-                </button>
-                <button
-                  type="button"
-                  disabled={!incomingRequests.length}
-                  onClick={() =>
-                    document.getElementById("follow-requests")?.scrollIntoView({ behavior: "smooth" })
-                  }
-                >
-                  <Inbox size={15} /> Requests
-                  {incomingRequests.length > 0 && <b>{incomingRequests.length}</b>}
-                </button>
-                <button
-                  type="button"
-                  disabled={!connections.length}
-                  onClick={() => setActiveChat(activeChat || connections[0] || null)}
-                >
-                  <MessageCircle size={15} /> Chat
-                </button>
-              </nav>
 
               <div className="profileSummary">
                 <ProfileAvatar
@@ -3404,7 +3461,13 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                       Remove
                     </button>
                   </header>
-                  <div className="messageList">
+                  <div
+                    className="messageList"
+                    ref={messageListRef}
+                    role="log"
+                    aria-live="polite"
+                    aria-label={`Conversation with ${activeChat.displayName}`}
+                  >
                     {messages.length ? (
                       messages.map((item) => {
                         const isCall =

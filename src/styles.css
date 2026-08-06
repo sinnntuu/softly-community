@@ -1677,7 +1677,8 @@ footer button {
   display: grid;
   grid-template-columns: minmax(300px, 0.85fr) minmax(380px, 1.15fr);
   width: min(1000px, 100%);
-  height: min(720px, calc(100vh - 48px));
+  height: min(720px, calc(100dvh - 48px));
+  min-height: 0;
   overflow: hidden;
   border-radius: 30px;
   background: var(--paper);
@@ -1698,52 +1699,6 @@ footer button {
   margin: 0 0 28px;
   font: 500 38px/1 var(--serif);
   letter-spacing: -1px;
-}
-
-.socialActionNav {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: -10px 0 24px;
-}
-
-.socialActionNav button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 38px;
-  border: 0;
-  border-radius: 13px;
-  padding: 8px;
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 8px;
-  font-weight: 750;
-  box-shadow: 4px 4px 9px var(--shadow-dark), -4px -4px 9px var(--shadow-light);
-}
-
-.socialActionNav button:hover:not(:disabled) {
-  color: var(--accent);
-  transform: translateY(-1px);
-}
-
-.socialActionNav button:disabled {
-  cursor: default;
-  opacity: .5;
-}
-
-.socialActionNav b {
-  display: grid;
-  place-items: center;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: white;
-  font-size: 8px;
 }
 
 .profileSummary {
@@ -1931,12 +1886,15 @@ footer button {
 
 .chatArea {
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: rgba(239, 236, 226, 0.42);
 }
 
 .chatHeader {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 11px;
@@ -2000,7 +1958,12 @@ footer button {
 
 .messageList {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
   padding: 26px;
 }
 
@@ -2096,6 +2059,7 @@ footer button {
 }
 
 .messageForm {
+  flex: 0 0 auto;
   display: flex;
   gap: 10px;
   padding: 18px 24px 24px;
@@ -2416,9 +2380,14 @@ footer button {
 
   .socialPanel {
     display: block;
-    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
     border-radius: 24px;
   }
+
+  .socialPanel.directoryFocus .socialSidebar { height: 100%; }
+  .socialPanel.directoryFocus .chatArea { display: none; }
+  .socialPanel.chatFocus .socialSidebar { display: none; }
+  .socialPanel.chatFocus .chatArea { height: 100%; }
 
   .socialSidebar {
     height: 48%;
@@ -2766,28 +2735,63 @@ footer button {
 .challengeOptionActions > span { color: var(--muted); font-size: 7px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .selectedThemeHelp { margin: -8px 0 18px !important; color: var(--muted); font-size: 10px; line-height: 1.45; }
 
-.floatingChatButton {
+.communityDock {
   position: fixed;
-  z-index: 70;
-  right: 24px;
-  bottom: 24px;
-  display: inline-flex;
+  z-index: 80;
+  right: 0;
+  left: 0;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(5, minmax(62px, 1fr));
   align-items: center;
-  gap: 9px;
-  border: 0;
-  border-radius: 999px;
-  padding: 10px 15px 10px 10px;
-  background: var(--ink);
-  color: #f7f3e9;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 800;
-  box-shadow: 8px 8px 22px rgba(43,46,41,.3), -5px -5px 16px rgba(255,255,255,.85);
+  gap: 4px;
+  width: min(470px, calc(100% - 28px));
+  border: 1px solid color-mix(in srgb, var(--muted) 16%, transparent);
+  border-radius: 22px;
+  padding: 7px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  box-shadow: 12px 12px 30px rgba(43,46,41,.28), -7px -7px 22px rgba(255,255,255,.78);
+  backdrop-filter: blur(18px);
+  margin-inline: auto;
 }
-.floatingChatButton:hover { transform: translateY(-2px); }
-.chatGlyph { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 19px; }
-.floatingChatButton strong { display: grid; place-items: center; min-width: 18px; height: 18px; border-radius: 999px; padding-inline: 5px; background: #fff; color: var(--accent); font-size: 8px; }
-.toast { bottom: 88px; }
+.communityDock button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 48px;
+  border: 0;
+  border-radius: 15px;
+  padding: 6px 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 750;
+}
+.communityDock button:hover,
+.communityDock button.active {
+  background: var(--ink);
+  color: white;
+  transform: translateY(-1px);
+}
+.communityDock button b {
+  position: absolute;
+  top: 3px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  padding-inline: 4px;
+  background: var(--accent);
+  color: white;
+  font-size: 8px;
+}
+.siteFooter { padding-bottom: 112px; }
+.toast { bottom: 100px; }
 
 @media (max-width: 900px) {
   .siteFooter .footerGrid { grid-template-columns: 1fr 1fr; }
@@ -2835,9 +2839,16 @@ footer button {
   .challengeOptionActions { grid-column: 1; justify-items: stretch; }
   .challengeOptionActions .roomEventButton { width: 100%; }
   .challengeOptionActions > span { text-align: center; }
-  .floatingChatButton { right: 14px; bottom: 14px; padding: 8px 12px 8px 8px; }
-  .floatingChatButton > span:nth-child(2) { display: none; }
-  .toast { right: 14px; bottom: 76px; max-width: calc(100% - 28px); }
+  .communityDock {
+    bottom: max(9px, env(safe-area-inset-bottom));
+    width: calc(100% - 18px);
+    border-radius: 18px;
+    padding: 5px;
+  }
+  .communityDock button { min-height: 46px; border-radius: 13px; }
+  .communityDock button span { font-size: 7px; }
+  .communityDock button b { top: 2px; right: 5px; }
+  .toast { right: 14px; bottom: 86px; max-width: calc(100% - 28px); }
 }
 
 /* Production experience: loading, achievements, responsive navigation and dark mode */
@@ -2912,7 +2923,8 @@ footer button {
 [data-theme="dark"] :is(.modalBackdrop, .notificationBackdrop) { background: rgba(2, 4, 3, .76); }
 [data-theme="dark"] :is(.composer input, .composer textarea, .composer select, .commentSection input, .messageForm input, .chatURLField input, .searchField input) { background: #1b1f1c; color: var(--ink); box-shadow: inset 3px 3px 8px var(--shadow-dark), inset -3px -3px 8px var(--shadow-light); }
 [data-theme="dark"] :is(.storyCard, .peopleCard, .requestCard, .notificationPanel, .composer, .socialPanel, .joinCard, .challengeOption, .siteFooter, .statusPage section) { border-color: rgba(255,255,255,.07); background-color: var(--paper); box-shadow: 10px 10px 24px var(--shadow-dark), -8px -8px 20px var(--shadow-light); }
-[data-theme="dark"] :is(.primaryAction, .publishButton, .floatingChatButton, .feedModes button.active) { background: #f2efe7; color: #171a18; box-shadow: 7px 7px 16px var(--shadow-dark), -5px -5px 14px var(--shadow-light); }
+[data-theme="dark"] :is(.primaryAction, .publishButton, .communityDock button.active, .feedModes button.active) { background: #f2efe7; color: #171a18; box-shadow: 7px 7px 16px var(--shadow-dark), -5px -5px 14px var(--shadow-light); }
+[data-theme="dark"] .communityDock { background: color-mix(in srgb, var(--paper) 92%, transparent); box-shadow: 12px 12px 30px var(--shadow-dark), -7px -7px 22px var(--shadow-light); }
 [data-theme="dark"] :is(.commentButton, .bookmarkButton, .shareStoryButton, .downloadStoryButton, .likeButton, .googleButton, .themeToggle, .mobileMenuToggle) { box-shadow: 5px 5px 12px var(--shadow-dark), -5px -5px 12px var(--shadow-light); }
 [data-theme="dark"] .googleG { background: #f8f8f8; }
 [data-theme="dark"] .storyBody { background: var(--paper); }
