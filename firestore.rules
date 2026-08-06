@@ -99,6 +99,22 @@ service cloud.firestore {
         );
     }
 
+    function validPostAnalysis() {
+      return !request.resource.data.keys().hasAny([
+          "meaningfulnessStars", "analysisVersion"
+        ])
+        || (
+          request.resource.data.keys().hasAll([
+            "meaningfulnessStars", "analysisVersion"
+          ])
+          && request.resource.data.meaningfulnessStars is int
+          && request.resource.data.meaningfulnessStars >= 0
+          && request.resource.data.meaningfulnessStars <= 10
+          && request.resource.data.analysisVersion is string
+          && request.resource.data.analysisVersion.size() <= 40
+        );
+    }
+
     match /users/{userId} {
       allow read: if signedIn();
       allow create, update: if signedIn()
@@ -138,12 +154,14 @@ service cloud.firestore {
         && request.resource.data.body.size() >= 40
         && request.resource.data.body.size() <= 6000
         && validPostMedia()
-        && validPostTheme();
+        && validPostTheme()
+        && validPostAnalysis();
       allow update: if signedIn()
         && resource.data.authorId == request.auth.uid
         && request.resource.data.authorId == resource.data.authorId
         && validPostMedia()
-        && validPostTheme();
+        && validPostTheme()
+        && validPostAnalysis();
       allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
     }
 

@@ -32,49 +32,107 @@ import {
   firebaseReady,
   googleProvider,
 } from "./firebase";
+import {
+  Bookmark,
+  Download,
+  GraduationCap,
+  HandHeart,
+  Heart,
+  HeartPulse,
+  ImagePlus,
+  Landmark,
+  Leaf,
+  Lightbulb,
+  Link2,
+  MessageCircle,
+  MessageSquareText,
+  Palette,
+  Paperclip,
+  Send,
+  Share2,
+  Sparkles,
+  Star,
+  Trophy,
+  Video,
+} from "lucide-react";
 
 const themeOptions = [
   {
     name: "Creative Expression",
-    icon: "✦",
+    icon: Palette,
     description: "Art, design, photography and original creative ideas.",
     keywords: ["art", "design", "creative", "photo", "photography", "expression"],
+    template: {
+      title: "The story behind [your creative work]",
+      summary: "Introduce the feeling, idea or experience that inspired your work.",
+      sections: ["What inspired me", "How I created it", "What I hope people feel"],
+    },
   },
   {
     name: "Culture & Heritage",
-    icon: "◈",
+    icon: Landmark,
     description: "Traditions, identity, local stories and shared heritage.",
     keywords: ["culture", "heritage", "tradition", "identity", "local", "history"],
+    template: {
+      title: "A tradition from [place/community] worth preserving",
+      summary: "Share a cultural memory and explain why it still matters today.",
+      sections: ["The tradition or memory", "What it means to us", "How we can preserve it"],
+    },
   },
   {
     name: "Technology for Good",
-    icon: "⌁",
+    icon: Lightbulb,
     description: "Useful technology that improves everyday life.",
     keywords: ["technology", "tech", "digital", "innovation", "app", "future"],
+    template: {
+      title: "Using technology to solve [real problem]",
+      summary: "Describe the problem, your solution and the people it can help.",
+      sections: ["The problem I noticed", "My technology idea", "Real-world impact and next steps"],
+    },
   },
   {
     name: "Life & Wellbeing",
-    icon: "♡",
+    icon: HeartPulse,
     description: "Personal growth, mental health and meaningful living.",
     keywords: ["life", "wellbeing", "health", "growth", "mind", "experience"],
+    template: {
+      title: "What [an experience] taught me about wellbeing",
+      summary: "Reflect on a personal moment and the lesson readers can use.",
+      sections: ["What happened", "What I felt and learned", "A practical thought for others"],
+    },
   },
   {
     name: "Nature & Sustainability",
-    icon: "⌇",
+    icon: Leaf,
     description: "Nature, climate action and sustainable choices.",
     keywords: ["nature", "climate", "green", "environment", "sustainable", "earth"],
+    template: {
+      title: "One sustainable change for [home/campus/community]",
+      summary: "Show an environmental challenge and a realistic action people can take.",
+      sections: ["What I observed", "Why it matters", "The change I propose"],
+    },
   },
   {
     name: "Student Innovation",
-    icon: "△",
+    icon: GraduationCap,
     description: "Student-built solutions, experiments and fresh thinking.",
     keywords: ["student", "college", "school", "idea", "project", "solution"],
+    template: {
+      title: "A student idea that can improve [problem/place]",
+      summary: "Explain your observation, prototype or solution and what you learned.",
+      sections: ["The challenge", "My idea or experiment", "What worked, what changed, what comes next"],
+    },
   },
   {
     name: "Social Impact",
-    icon: "◎",
+    icon: HandHeart,
     description: "Ideas that strengthen communities and create change.",
     keywords: ["social", "community", "impact", "people", "change", "help"],
+    template: {
+      title: "How we can create change for [people/community]",
+      summary: "Tell a human story, identify the need and suggest a practical action.",
+      sections: ["The people and need", "Why the issue matters", "A useful path forward"],
+    },
   },
 ];
 const themes = ["All themes", ...themeOptions.map((item) => item.name)];
@@ -86,21 +144,54 @@ const legacyThemeMap = {
 };
 const storyTheme = (post) =>
   post?.theme || legacyThemeMap[post?.category] || post?.category || "Creative Expression";
-const storyScore = (post, likeCount = 0, commentCount = 0) => {
+const meaningfulnessAnalysis = (post) => {
   const theme = storyTheme(post);
   const definition = themeOptions.find((item) => item.name === theme);
-  const text = `${post?.title || ""} ${post?.excerpt || ""} ${post?.body || ""}`.toLowerCase();
-  const relevance = Math.min(
-    6,
-    new Set((definition?.keywords || []).filter((keyword) => text.includes(keyword))).size * 2,
+  const body = post?.body?.trim?.() || "";
+  const text = `${post?.title || ""} ${post?.excerpt || ""} ${body}`.toLowerCase();
+  if (!text.trim()) {
+    return {
+      stars: 0,
+      criteria: { relevance: 0, depth: 0, reflection: 0, specificity: 0, usefulness: 0 },
+      feedback: "Start writing to receive private analyzer guidance.",
+    };
+  }
+
+  const keywordHits = new Set(
+    (definition?.keywords || []).filter((keyword) => text.includes(keyword)),
+  ).size;
+  const relevance = Math.min(2, keywordHits * 0.5 + (text.includes(theme.toLowerCase()) ? 0.5 : 0));
+  const sentenceCount = (body.match(/[.!?]+(?:\s|$)/g) || []).length;
+  const paragraphCount = body.split(/\n\s*\n/).filter((item) => item.trim()).length;
+  const depth = Math.min(2, (body.length >= 250 ? 0.7 : 0.25) + (body.length >= 700 ? 0.65 : 0) + (sentenceCount >= 5 ? 0.35 : 0) + (paragraphCount >= 3 ? 0.3 : 0));
+  const reflectionWords = ["learned", "realized", "felt", "experience", "because", "changed", "understand", "believe", "meaning"];
+  const reflectionHits = reflectionWords.filter((word) => text.includes(word)).length;
+  const reflection = Math.min(2, reflectionHits * 0.32 + (/\b(i|my|we|our)\b/.test(text) ? 0.55 : 0));
+  const specificitySignals = [/[0-9]/, /\b(today|yesterday|year|month|day|campus|school|college|village|city|home)\b/, /\b(for example|such as|when|where)\b/];
+  const specificity = Math.min(2, specificitySignals.reduce((score, pattern) => score + (pattern.test(text) ? 0.55 : 0), 0) + (body.length >= 450 ? 0.35 : 0));
+  const usefulWords = ["solution", "action", "improve", "help", "change", "can", "should", "next", "practice", "create"];
+  const usefulHits = usefulWords.filter((word) => text.includes(word)).length;
+  const usefulness = Math.min(2, usefulHits * 0.3 + (/\b(first|second|finally|next step)\b/.test(text) ? 0.5 : 0));
+  const criteria = { relevance, depth, reflection, specificity, usefulness };
+  const stars = Math.max(
+    1,
+    Math.min(10, Math.round(Object.values(criteria).reduce((sum, value) => sum + value, 0))),
   );
-  const depth = Math.min(5, Math.floor((post?.body?.trim?.().length || 0) / 350));
-  const photo = post?.mediaType === "image" ? 3 : 0;
+  const labels = {
+    relevance: "connect the story more clearly to the selected theme",
+    depth: "add more detail and structure to the story",
+    reflection: "explain what you felt, learned or realised",
+    specificity: "include a concrete example, place, moment or detail",
+    usefulness: "end with a useful insight or practical next step",
+  };
+  const weakest = Object.entries(criteria).sort((a, b) => a[1] - b[1])[0]?.[0];
   return {
-    total: likeCount * 5 + commentCount * 3 + relevance + depth + photo,
-    relevance,
-    depth,
-    photo,
+    stars,
+    criteria,
+    feedback:
+      stars >= 9
+        ? "Strong, specific and meaningful. A final proofread will make it ready."
+        : `To make it more meaningful, ${labels[weakest]}.`,
   };
 };
 const tones = ["peach", "sage", "sky"];
@@ -136,6 +227,19 @@ const linkHost = (value) => {
     return "Shared link";
   }
 };
+const escapeHTML = (value = "") =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+const safeFileName = (value = "story") =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60) || "softly-story";
 const createCallRoom = () => {
   if (globalThis.crypto?.getRandomValues) {
     const values = new Uint32Array(4);
@@ -169,6 +273,29 @@ function ProfileAvatar({ person, tone = "sage", large = false }) {
       ) : (
         initials(name)
       )}
+    </span>
+  );
+}
+
+function StarRating({ value = 0, compact = false }) {
+  const rounded = Math.max(0, Math.min(10, Math.round(value)));
+  return (
+    <span
+      className={`starRating ${compact ? "compact" : ""}`}
+      aria-label={`${rounded} meaningfulness stars out of 10`}
+      title={`${rounded}/10 meaningfulness stars`}
+    >
+      <span className="starIcons" aria-hidden="true">
+        {Array.from({ length: 10 }, (_, index) => (
+          <Star
+            key={index}
+            size={compact ? 10 : 13}
+            strokeWidth={2}
+            className={index < rounded ? "filled" : ""}
+          />
+        ))}
+      </span>
+      <strong>{rounded}/10</strong>
     </span>
   );
 }
@@ -734,6 +861,15 @@ export default function App() {
         : null,
     [draft.mediaType, draft.mediaURL],
   );
+  const selectedTheme = useMemo(
+    () => themeOptions.find((item) => item.name === draft.theme) || themeOptions[0],
+    [draft.theme],
+  );
+  const SelectedThemeIcon = selectedTheme.icon;
+  const draftAnalysis = useMemo(
+    () => meaningfulnessAnalysis(draft),
+    [draft],
+  );
   const commentsByPost = useMemo(() => {
     const result = {};
     for (const comment of comments) {
@@ -752,9 +888,7 @@ export default function App() {
   const leaderboardEntries = useMemo(() => {
     const bestByWriter = new Map();
     posts.forEach((post) => {
-      const likeCount = likesByPost[post.id]?.length || 0;
-      const commentCount = commentsByPost[post.id]?.length || 0;
-      const breakdown = storyScore(post, likeCount, commentCount);
+      const analysis = meaningfulnessAnalysis(post);
       const liveAuthor =
         post.authorId === user?.uid
           ? profile
@@ -768,15 +902,15 @@ export default function App() {
         photoURL: liveAuthor?.photoURL || post.authorPhoto || "",
         title: post.title,
         theme: storyTheme(post),
-        score: breakdown.total,
-        breakdown,
+        stars: analysis.stars,
+        analysis,
         createdAt: post.createdAt,
       };
       const current = bestByWriter.get(post.authorId);
       if (
         !current ||
-        entry.score > current.score ||
-        (entry.score === current.score &&
+        entry.stars > current.stars ||
+        (entry.stars === current.stars &&
           timeValue(entry.createdAt) > timeValue(current.createdAt))
       ) {
         bestByWriter.set(post.authorId, entry);
@@ -785,11 +919,11 @@ export default function App() {
     return [...bestByWriter.values()]
       .sort(
         (a, b) =>
-          b.score - a.score ||
+          b.stars - a.stars ||
           timeValue(b.createdAt) - timeValue(a.createdAt),
       )
       .slice(0, 3);
-  }, [posts, likesByPost, commentsByPost, people, profile, user]);
+  }, [posts, people, profile, user]);
   const notificationItems = useMemo(() => {
     if (!user) return [];
     const personFor = (uid) =>
@@ -993,8 +1127,15 @@ export default function App() {
     requireUser(() => {
       setNotificationsOpen(false);
       setSocialOpen(true);
-      if (!activeChat && connections.length === 1) {
-        setActiveChat(connections[0]);
+      if (!activeChat && connections.length) {
+        const latest = [...allMessages].sort(
+          (a, b) => timeValue(b.createdAt) - timeValue(a.createdAt),
+        )[0];
+        const latestOtherId = latest?.participants?.find((uid) => uid !== user.uid);
+        setActiveChat(
+          connections.find((person) => person.uid === latestOtherId) ||
+            connections[0],
+        );
       }
     });
 
@@ -1111,6 +1252,22 @@ export default function App() {
     }
   };
 
+  const applyThemeTemplate = () => {
+    const template = selectedTheme.template;
+    setDraft((current) => ({
+      ...current,
+      title: current.title || template.title,
+      excerpt: current.excerpt || template.summary,
+      body:
+        current.body ||
+        template.sections
+          .map((section) => `${section}\n[Write 2–3 honest and specific sentences here.]`)
+          .join("\n\n"),
+    }));
+    setNotice("Theme template added. Replace the prompts with your own story.");
+    window.setTimeout(() => setNotice(""), 3000);
+  };
+
   const chooseStoryPhoto = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1163,6 +1320,8 @@ export default function App() {
         authorName: currentName,
         authorUsername: profile?.username || "",
         authorPhoto: currentPhoto,
+        meaningfulnessStars: draftAnalysis.stars,
+        analysisVersion: "local-meaning-v1",
         createdAt: serverTimestamp(),
       };
       if (draft.mediaType && draft.mediaURL) {
@@ -1264,6 +1423,33 @@ export default function App() {
     } catch (error) {
       if (error?.name !== "AbortError") setNotice("Story could not be shared.");
     }
+  };
+
+  const downloadStory = (post) => {
+    const analysis = meaningfulnessAnalysis(post);
+    const author = post.authorUsername
+      ? `@${post.authorUsername}`
+      : post.authorName || "Softly writer";
+    const image =
+      post.mediaType === "image" && post.mediaURL
+        ? `<img class="cover" src="${escapeHTML(post.mediaURL)}" alt="Story photo">`
+        : "";
+    const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHTML(post.title)} — Softly</title><style>
+body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.page{max-width:760px;margin:0 auto;padding:40px 24px 70px}.brand{font:700 28px Georgia,serif}.brand i{color:#da7059}.theme{margin-top:48px;color:#da7059;font-size:11px;font-weight:700;letter-spacing:.14em}.cover{width:100%;max-height:460px;object-fit:cover;margin:24px 0;border-radius:24px}h1{font:500 48px/1.05 Georgia,serif;letter-spacing:-1.5px;margin:14px 0}h2{font:400 20px/1.5 Georgia,serif;color:#62675f}.meta{display:flex;justify-content:space-between;gap:20px;margin:24px 0;padding:16px 0;border-top:1px solid #c8c6bd;border-bottom:1px solid #c8c6bd;font-size:12px}.stars{color:#da7059;font-weight:700}.story{white-space:pre-wrap;font:18px/1.8 Georgia,serif}.footer{margin-top:54px;color:#747871;font-size:11px}
+</style></head><body><main class="page"><div class="brand">softly<i>.</i></div><div class="theme">${escapeHTML(storyTheme(post)).toUpperCase()}</div>${image}<h1>${escapeHTML(post.title)}</h1><h2>${escapeHTML(post.excerpt)}</h2><div class="meta"><strong>${escapeHTML(author)}</strong><span class="stars">★ ${analysis.stars}/10 meaningfulness</span></div><article class="story">${escapeHTML(post.body)}</article><div class="footer">Downloaded from Softly Community · Founder SINTU KUMAR RAI</div></main></body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeFileName(post.title)}-softly.html`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+    setNotice("Story saved to your Downloads with its photo and text.");
+    window.setTimeout(() => setNotice(""), 3200);
   };
 
   const deletePost = async () => {
@@ -1816,7 +2002,8 @@ export default function App() {
           <h2>Choose a theme. Share your perspective.</h2>
           <p>
             Pick an inbuilt theme, add an original photo and publish your
-            story or thoughts. The Top 3 updates live as the community engages.
+            story or thoughts. The Top 3 updates live from story meaningfulness,
+            not popularity.
           </p>
           <div className="eventActions">
             <button
@@ -1828,31 +2015,34 @@ export default function App() {
             <span>{themeOptions.length} themes · live ranking</span>
           </div>
           <div className="themeDeck" aria-label="Built-in event themes">
-            {themeOptions.map((item) => (
-              <button
-                type="button"
-                key={item.name}
-                className={themeFilter === item.name ? "active" : ""}
-                onClick={() => {
-                  setThemeFilter(item.name);
-                  document.getElementById("stories")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                title={item.description}
-              >
-                <span>{item.icon}</span>
-                {item.name}
-              </button>
-            ))}
+            {themeOptions.map((item) => {
+              const ThemeIcon = item.icon;
+              return (
+                <button
+                  type="button"
+                  key={item.name}
+                  className={themeFilter === item.name ? "active" : ""}
+                  onClick={() => {
+                    setThemeFilter(item.name);
+                    document.getElementById("stories")?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  title={item.description}
+                >
+                  <span><ThemeIcon size={15} strokeWidth={1.8} /></span>
+                  {item.name}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="leaderboardCard">
           <header>
             <div>
-              <p className="eyebrow">TOP PARTICIPANTS</p>
+              <p className="eyebrow leaderboardEyebrow"><Trophy size={13} /> TOP PARTICIPANTS</p>
               <h3>Live Top 3</h3>
             </div>
-            <span className="liveBadge"><i /> LIVE</span>
+            <span className="liveBadge"><Sparkles size={11} /> AI RANKED</span>
           </header>
           {leaderboardEntries.length ? (
             <div className="leaderboardList">
@@ -1883,7 +2073,7 @@ export default function App() {
                     </strong>
                     <small>{entry.theme}</small>
                   </span>
-                  <span className="leaderScore">{entry.score}<small>PTS</small></span>
+                  <StarRating value={entry.stars} compact />
                 </button>
               ))}
             </div>
@@ -1894,8 +2084,8 @@ export default function App() {
             </div>
           )}
           <p className="scoringNote">
-            Score: likes × 5, comments × 3, theme relevance, story depth and
-            an original photo bonus.
+            Ranking ignores likes. The private analyzer reads theme relevance,
+            depth, reflection, specificity and usefulness, then awards up to 10 stars.
           </p>
         </div>
       </section>
@@ -1961,11 +2151,7 @@ export default function App() {
             {visiblePosts.map((post, index) => {
               const postLikes = likesByPost[post.id] || [];
               const postComments = commentsByPost[post.id] || [];
-              const postAnalysis = storyScore(
-                post,
-                postLikes.length,
-                postComments.length,
-              );
+              const postAnalysis = meaningfulnessAnalysis(post);
               const liked = user ? postLikes.includes(user.uid) : false;
               const bookmarked = bookmarkedPostIds.has(post.id);
               const liveAuthor =
@@ -2025,7 +2211,7 @@ export default function App() {
                           : "JUST NOW"}
                       </span>
                       <span>
-                        {postAnalysis.total} PTS · {Math.max(2, Math.ceil((post.body?.length || 0) / 900))}{" "}
+                        <StarRating value={postAnalysis.stars} compact /> · {Math.max(2, Math.ceil((post.body?.length || 0) / 900))}{" "}
                         MIN READ
                       </span>
                     </div>
@@ -2127,14 +2313,14 @@ export default function App() {
                           aria-label={`Open ${postComments.length} comments`}
                           title="Open comments"
                         >
-                          ◌ {postComments.length}
+                          <MessageSquareText size={14} /> {postComments.length}
                         </button>
                         <button
                           className={`likeButton ${liked ? "liked" : ""}`}
                           onClick={() => toggleLike(post.id)}
                           aria-label={liked ? "Unlike story" : "Like story"}
                         >
-                          <span>{liked ? "♥" : "♡"}</span> {postLikes.length}
+                          <Heart size={15} fill={liked ? "currentColor" : "none"} /> {postLikes.length}
                         </button>
                         <button
                           className={`bookmarkButton ${bookmarked ? "saved" : ""}`}
@@ -2142,7 +2328,7 @@ export default function App() {
                           aria-label={bookmarked ? "Remove bookmark" : "Bookmark story"}
                           title={bookmarked ? "Saved" : "Save story"}
                         >
-                          {bookmarked ? "◆" : "◇"}
+                          <Bookmark size={15} fill={bookmarked ? "currentColor" : "none"} />
                         </button>
                         <button
                           className="shareStoryButton"
@@ -2150,7 +2336,15 @@ export default function App() {
                           aria-label="Share story"
                           title="Share story"
                         >
-                          ↗
+                          <Share2 size={15} />
+                        </button>
+                        <button
+                          className="downloadStoryButton"
+                          onClick={() => downloadStory(post)}
+                          aria-label="Download story with photo"
+                          title="Download story to this device"
+                        >
+                          <Download size={15} />
                         </button>
                       </div>
                     </div>
@@ -2239,8 +2433,8 @@ export default function App() {
         onClick={openChatPanel}
         aria-label={`Open chat${unreadMessages ? `, ${unreadMessages} new messages` : ""}`}
       >
-        <span className="chatGlyph" aria-hidden="true">◌</span>
-        <span>Chat</span>
+        <span className="chatGlyph" aria-hidden="true"><MessageCircle size={18} /></span>
+        <span>Messages</span>
         {unreadMessages > 0 && (
           <strong>{Math.min(unreadMessages, 9)}</strong>
         )}
@@ -2255,6 +2449,32 @@ export default function App() {
             <p className="eyebrow">THEME CHALLENGE ENTRY</p>
             <h2>Share your perspective.</h2>
             <form onSubmit={publish}>
+              <div className="themeTemplatePicker">
+                <label>
+                  Choose your theme
+                  <select
+                    value={draft.theme}
+                    onChange={(event) =>
+                      setDraft({ ...draft, theme: event.target.value })
+                    }
+                  >
+                    {themeOptions.map((item) => (
+                      <option key={item.name}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="templateSuggestion">
+                  <span className="templateIcon"><SelectedThemeIcon size={19} /></span>
+                  <div>
+                    <small>SUGGESTED TEMPLATE</small>
+                    <strong>{selectedTheme.template.title}</strong>
+                    <p>{selectedTheme.template.sections.join(" · ")}</p>
+                  </div>
+                  <button type="button" onClick={applyThemeTemplate}>
+                    <Sparkles size={13} /> Use template
+                  </button>
+                </div>
+              </div>
               <label>
                 Title
                 <input
@@ -2296,6 +2516,28 @@ export default function App() {
                   placeholder="Write from your experience…"
                 />
               </label>
+              <section className="meaningAnalyzer" aria-live="polite">
+                <header>
+                  <span><Sparkles size={16} /></span>
+                  <div>
+                    <strong>Meaningfulness AI</strong>
+                    <small>Private on-device analysis</small>
+                  </div>
+                  <StarRating value={draftAnalysis.stars} />
+                </header>
+                <p>{draftAnalysis.feedback}</p>
+                <div className="analysisCriteria">
+                  {Object.entries(draftAnalysis.criteria).map(([name, value]) => (
+                    <div key={name}>
+                      <span>{name}</span>
+                      <i><b style={{ width: `${Math.round((value / 2) * 100)}%` }} /></i>
+                    </div>
+                  ))}
+                </div>
+                <small className="analyzerPrivacy">
+                  Your draft stays in this browser. Likes and popularity do not affect these stars.
+                </small>
+              </section>
               <div className="mediaComposer">
                 <div className="mediaComposerHead">
                   <div>
@@ -2321,7 +2563,7 @@ export default function App() {
 
                 <div className="mediaOptions">
                   <label className="storyPhotoButton">
-                    <span>{mediaPreparing ? "Compressing…" : "＋ Add photo"}</span>
+                    <span><ImagePlus size={15} /> {mediaPreparing ? "Compressing…" : "Add photo"}</span>
                     <small>JPG, PNG or WebP · max 15 MB</small>
                     <input
                       type="file"
@@ -2371,22 +2613,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <label>
-                Choose your theme
-                <select
-                  value={draft.theme}
-                  onChange={(event) =>
-                    setDraft({ ...draft, theme: event.target.value })
-                  }
-                >
-                  {themeOptions.map((item) => (
-                    <option key={item.name}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-              <p className="selectedThemeHelp">
-                {themeOptions.find((item) => item.name === draft.theme)?.description}
-              </p>
               <button
                 className="publishButton"
                 disabled={storyPublishing || mediaPreparing}
@@ -2981,7 +3207,13 @@ export default function App() {
                             className={chatAttachment.type === type ? "active" : ""}
                             onClick={() => setChatAttachment({ type, url: "" })}
                           >
-                            {type === "link" ? "↗ Link" : type === "photo" ? "▣ Photo" : "▶ Video"}
+                            {type === "link" ? (
+                              <><Link2 size={14} /> Link</>
+                            ) : type === "photo" ? (
+                              <><ImagePlus size={14} /> Photo</>
+                            ) : (
+                              <><Video size={14} /> Video</>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -3029,7 +3261,7 @@ export default function App() {
                           className="primaryAction"
                           disabled={attachmentPreparing || !chatAttachment.url}
                         >
-                          Share ↗
+                          Share <Send size={14} />
                         </button>
                       </div>
                     </form>
@@ -3042,7 +3274,7 @@ export default function App() {
                       aria-label="Share link, photo or video"
                       title="Share link, photo or video"
                     >
-                      ＋
+                      <Paperclip size={18} />
                     </button>
                     <input
                       value={message}
@@ -3050,7 +3282,9 @@ export default function App() {
                       maxLength={1000}
                       placeholder="Write a message…"
                     />
-                    <button className="messageSendButton">Send ↗</button>
+                    <button className="messageSendButton">
+                      Send <Send size={15} />
+                    </button>
                   </form>
                 </>
               ) : (

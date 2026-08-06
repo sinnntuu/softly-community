@@ -8,25 +8,26 @@ notifications, connections, and private real-time chat.
 
 - Google sign-in with Firebase Authentication
 - Create and read public blog posts
-- Theme Challenge event mode with seven built-in participation themes
-- Live Top 3 participant leaderboard using likes, comments, theme relevance,
-  story depth, and an original-photo bonus
+- Theme Challenge event mode with seven built-in themes and guided writing templates
+- Private 10-star meaningfulness analysis using theme relevance, depth,
+  reflection, specificity, and usefulness—not likes or popularity
+- Live Top 3 participant leaderboard based on each writer's best meaningful story
 - Add a compressed story photo without paid storage
 - Share YouTube, Vimeo, Google Drive, MP4, WebM, or OGG videos
 - Real-time likes
-- Story comments, sharing and personal bookmarks
+- Story comments, sharing, personal bookmarks, and offline story downloads with photos
 - Latest, popular and saved feed filters with search suggestions
 - Owner-only story deletion with like cleanup
 - Editable display name, unique `@username`, bio, location, website, and profile photo
 - Find people by username or display name
 - Follow requests, connections, and private real-time chat
-- Always-visible floating chat shortcut with unread-message count
+- Always-visible floating chat shortcut that opens the latest conversation
 - Notifications for follows, likes, comments, messages and call invitations
 - Instagram-style chat sharing for secure links, compressed photos and videos
 - Audio and video-call invitations inside private chat using Jitsi Meet
 - Clearly accessible logout and a complete responsive footer
 - Re-authenticated account deletion with related-data cleanup
-- Responsive neomorphic design
+- Responsive neomorphic design with a consistent Lucide icon system
 - Firestore rules that protect profiles and reserve usernames atomically
 
 ## Free Firebase setup
