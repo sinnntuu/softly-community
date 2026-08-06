@@ -406,7 +406,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && roomId.matches("^[A-HJ-NP-Z2-9]{6}$")
         && request.resource.data.keys().hasOnly([
-          "code", "title", "theme", "hostId", "hostName",
+          "code", "title", "hostId", "hostName",
           "status", "createdAt", "updatedAt"
         ])
         && request.resource.data.code == roomId
@@ -417,31 +417,38 @@ service cloud.firestore {
         && request.resource.data.title is string
         && request.resource.data.title.size() >= 5
         && request.resource.data.title.size() <= 80
-        && request.resource.data.theme in [
-          "Creative Expression", "Culture & Heritage", "Technology for Good",
-          "Life & Wellbeing", "Nature & Sustainability", "Student Innovation",
-          "Social Impact"
-        ]
         && request.resource.data.status == "open"
         && request.resource.data.createdAt is timestamp
         && request.resource.data.updatedAt is timestamp;
       allow update: if signedIn()
         && resource.data.hostId == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "status", "winnerId", "winnerName", "winnerScore",
-          "judgedAt", "updatedAt"
-        ])
-        && resource.data.status == "open"
-        && request.resource.data.status == "complete"
-        && request.resource.data.winnerId is string
-        && request.resource.data.winnerName is string
-        && request.resource.data.winnerName.size() >= 2
-        && request.resource.data.winnerName.size() <= 50
-        && request.resource.data.winnerScore is int
-        && request.resource.data.winnerScore >= 1
-        && request.resource.data.winnerScore <= 10
-        && request.resource.data.judgedAt is timestamp
-        && request.resource.data.updatedAt is timestamp;
+        && (
+          (
+            resource.data.status == "open"
+            && request.resource.data.status == "closed"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status", "closedAt", "updatedAt"
+            ])
+            && request.resource.data.closedAt is timestamp
+            && request.resource.data.updatedAt is timestamp
+          ) || (
+            resource.data.status in ["open", "closed"]
+            && request.resource.data.status == "complete"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status", "winnerId", "winnerName", "winnerScore",
+              "judgedAt", "updatedAt"
+            ])
+            && request.resource.data.winnerId is string
+            && request.resource.data.winnerName is string
+            && request.resource.data.winnerName.size() >= 2
+            && request.resource.data.winnerName.size() <= 50
+            && request.resource.data.winnerScore is int
+            && request.resource.data.winnerScore >= 1
+            && request.resource.data.winnerScore <= 10
+            && request.resource.data.judgedAt is timestamp
+            && request.resource.data.updatedAt is timestamp
+          )
+        );
       allow delete: if signedIn() && resource.data.hostId == request.auth.uid;
 
       match /participants/{userId} {
@@ -455,7 +462,7 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/rooms/$(roomId)).data.status
             == "open"
           && request.resource.data.keys().hasOnly([
-            "roomId", "userId", "displayName", "photoURL", "joinedAt"
+            "roomId", "userId", "displayName", "photoURL", "theme", "joinedAt"
           ])
           && request.resource.data.roomId == roomId
           && request.resource.data.userId == request.auth.uid
@@ -464,8 +471,23 @@ service cloud.firestore {
           && request.resource.data.displayName.size() <= 50
           && request.resource.data.photoURL is string
           && request.resource.data.photoURL.size() <= 180000
+          && request.resource.data.theme in [
+            "Creative Expression", "Culture & Heritage", "Technology for Good",
+            "Life & Wellbeing", "Nature & Sustainability", "Student Innovation",
+            "Social Impact"
+          ]
           && request.resource.data.joinedAt is timestamp;
-        allow update, delete: if false;
+        allow update: if signedIn()
+          && request.auth.uid == userId
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.status
+            == "open"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["theme"])
+          && request.resource.data.theme in [
+            "Creative Expression", "Culture & Heritage", "Technology for Good",
+            "Life & Wellbeing", "Nature & Sustainability", "Student Innovation",
+            "Social Impact"
+          ];
+        allow delete: if isRoomHost(roomId);
       }
 
       match /submissions/{userId} {
@@ -482,7 +504,7 @@ service cloud.firestore {
             == "open"
           && request.resource.data.createdAt == resource.data.createdAt
           && validRoomSubmission(roomId, userId);
-        allow delete: if false;
+        allow delete: if isRoomHost(roomId);
       }
     }
 

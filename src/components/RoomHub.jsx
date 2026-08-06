@@ -6,14 +6,17 @@ import {
   Crown,
   Download,
   ImagePlus,
+  Lock,
   LogIn,
   Plus,
   Sparkles,
+  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -23,6 +26,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { cleanText, escapeHTML, safeFileName } from "../lib/text";
 
@@ -93,10 +97,9 @@ export default function RoomHub({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [joinCode, setJoinCode] = useState("");
-  const [createDraft, setCreateDraft] = useState({
-    title: "",
-    theme: "Student Innovation",
-  });
+  const [joinTheme, setJoinTheme] = useState("Student Innovation");
+  const [entryTheme, setEntryTheme] = useState("Student Innovation");
+  const [createDraft, setCreateDraft] = useState({ title: "" });
   const [entryDraft, setEntryDraft] = useState({
     title: "",
     thought: "",
@@ -165,6 +168,7 @@ export default function RoomHub({
   }, [activeCode, db]);
 
   const ownSubmission = submissions.find((item) => item.userId === user.uid);
+  const activeParticipant = participants.find((item) => item.userId === user.uid);
 
   useEffect(() => {
     if (!ownSubmission) return;
@@ -175,6 +179,13 @@ export default function RoomHub({
     });
   }, [ownSubmission?.id, ownSubmission?.updatedAt]);
 
+  useEffect(() => {
+    const savedTheme = ownSubmission?.theme || activeParticipant?.theme || room?.theme;
+    if (themeOptions.some((item) => item.name === savedTheme)) {
+      setEntryTheme(savedTheme);
+    }
+  }, [activeParticipant?.theme, ownSubmission?.theme, room?.theme, themeOptions]);
+
   const ranking = useMemo(
     () =>
       submissions
@@ -183,7 +194,7 @@ export default function RoomHub({
             title: submission.title,
             excerpt: submission.thought.slice(0, 240),
             body: submission.thought,
-            theme: room?.theme,
+            theme: submission.theme || room?.theme || "Student Innovation",
           });
           return { ...submission, analysis, score: analysis.stars };
         })
@@ -196,12 +207,17 @@ export default function RoomHub({
     [analyzeThought, room?.theme, submissions],
   );
 
-  const selectedTheme = themeOptions.find((item) => item.name === room?.theme);
-  const createTheme = themeOptions.find((item) => item.name === createDraft.theme);
+  const selectedTheme = themeOptions.find((item) => item.name === entryTheme);
+  const joinThemeDefinition = themeOptions.find((item) => item.name === joinTheme);
   const allSubmitted =
     participants.length >= 2 && submissions.length === participants.length;
   const isHost = room?.hostId === user.uid;
   const isComplete = room?.status === "complete";
+  const isClosed = room?.status === "closed";
+  const canFinalize =
+    !isComplete &&
+    ranking.length >= 2 &&
+    ((room?.status === "open" && allSubmitted) || room?.status === "closed");
 
   const saveActiveCode = (code) => {
     setActiveCode(code);
@@ -217,6 +233,7 @@ export default function RoomHub({
     setRoom(null);
     setError("");
     setEntryDraft({ title: "", thought: "", imageURL: "" });
+    setEntryTheme("Student Innovation");
     try {
       localStorage.removeItem(storageKey);
     } catch {
@@ -231,11 +248,6 @@ export default function RoomHub({
       setError("Give the room a clear title of at least 5 characters.");
       return;
     }
-    if (!themeOptions.some((item) => item.name === createDraft.theme)) {
-      setError("Choose one of the available themes.");
-      return;
-    }
-
     setBusy(true);
     setError("");
     try {
@@ -250,7 +262,6 @@ export default function RoomHub({
             transaction.set(roomRef, {
               code: candidate,
               title,
-              theme: createDraft.theme,
               hostId: user.uid,
               hostName: displayName,
               status: "open",
@@ -270,6 +281,7 @@ export default function RoomHub({
         userId: user.uid,
         displayName,
         photoURL: profilePhoto,
+        theme: "Student Innovation",
         joinedAt: serverTimestamp(),
       });
       saveActiveCode(code);
@@ -286,6 +298,10 @@ export default function RoomHub({
     const code = joinCode.trim().toUpperCase();
     if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
       setError("Enter the 6-character room code.");
+      return;
+    }
+    if (!themeOptions.some((item) => item.name === joinTheme)) {
+      setError("Choose one of the available themes.");
       return;
     }
     setBusy(true);
@@ -307,11 +323,13 @@ export default function RoomHub({
           userId: user.uid,
           displayName,
           photoURL: profilePhoto,
+          theme: joinTheme,
           joinedAt: serverTimestamp(),
         });
       }
+      setEntryTheme(participantSnapshot.data()?.theme || joinTheme);
       saveActiveCode(code);
-      onNotice(`Joined room ${code}.`);
+      onNotice(`Joined room ${code} with the ${participantSnapshot.data()?.theme || joinTheme} theme.`);
     } catch (roomError) {
       setError(roomError.message || "The room could not be joined.");
     } finally {
@@ -364,6 +382,10 @@ export default function RoomHub({
       setError("Entries are closed for this room.");
       return;
     }
+    if (!themeOptions.some((item) => item.name === entryTheme)) {
+      setError("Choose one of the available themes.");
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -372,8 +394,13 @@ export default function RoomHub({
         title,
         excerpt: thought.slice(0, 240),
         body: thought,
-        theme: room.theme,
+        theme: entryTheme,
       });
+      await setDoc(
+        doc(db, "rooms", activeCode, "participants", user.uid),
+        { theme: entryTheme },
+        { merge: true },
+      );
       await setDoc(doc(db, "rooms", activeCode, "submissions", user.uid), {
         roomId: activeCode,
         userId: user.uid,
@@ -382,7 +409,7 @@ export default function RoomHub({
         title,
         thought,
         imageURL: entryDraft.imageURL,
-        theme: room.theme,
+        theme: entryTheme,
         score: analysis.stars,
         feedback: analysis.feedback,
         createdAt: ownSubmission?.createdAt || serverTimestamp(),
@@ -396,8 +423,56 @@ export default function RoomHub({
     }
   };
 
+  const closeRoom = async () => {
+    if (!isHost || room?.status !== "open") return;
+    if (!window.confirm("Close this room? New participants and entry changes will stop.")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await updateDoc(doc(db, "rooms", activeCode), {
+        status: "closed",
+        closedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      onNotice("Room closed. The submitted entries are locked.");
+    } catch (roomError) {
+      setError(roomError.message || "The room could not be closed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteRoom = async () => {
+    if (!isHost) return;
+    if (!window.confirm("Permanently delete this room and every entry? This cannot be undone.")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const childRefs = [
+        ...participants.map((item) =>
+          doc(db, "rooms", activeCode, "participants", item.id),
+        ),
+        ...submissions.map((item) =>
+          doc(db, "rooms", activeCode, "submissions", item.id),
+        ),
+      ];
+      for (let start = 0; start < childRefs.length; start += 400) {
+        const batch = writeBatch(db);
+        childRefs.slice(start, start + 400).forEach((itemRef) => batch.delete(itemRef));
+        await batch.commit();
+      }
+      await deleteDoc(doc(db, "rooms", activeCode));
+      leaveRoomView();
+      onNotice("Room and all of its entries were deleted.");
+    } catch (roomError) {
+      setError(roomError.message || "The room could not be deleted.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const finalizeRoom = async () => {
-    if (!isHost || !allSubmitted || !ranking.length) return;
+    if (!isHost || !canFinalize || !ranking.length) return;
     setBusy(true);
     setError("");
     try {
@@ -427,7 +502,7 @@ export default function RoomHub({
             <div class="rank">${index + 1}</div>
             <img src="${entry.imageURL}" alt="Picture shared by ${escapeHTML(entry.displayName)}">
             <div class="copy">
-              <small>${escapeHTML(room.theme)}</small>
+              <small>${escapeHTML(entry.theme || room.theme || "Student Innovation")}</small>
               <h2>${escapeHTML(entry.title)}</h2>
               <p class="author">${escapeHTML(entry.displayName)} · ★ ${entry.score}/10</p>
               <p>${escapeHTML(entry.thought).replace(/\n/g, "<br>")}</p>
@@ -481,7 +556,7 @@ export default function RoomHub({
               <form className="roomActionCard" onSubmit={createRoom}>
                 <span className="roomCardIcon"><Plus size={20} /></span>
                 <h3>Create a room</h3>
-                <p>You become the host and control when the final analysis starts.</p>
+                <p>You become the host. Participants choose their own theme when joining.</p>
                 <label>
                   Room title
                   <input
@@ -494,25 +569,6 @@ export default function RoomHub({
                     required
                   />
                 </label>
-                <label>
-                  Theme
-                  <select
-                    value={createDraft.theme}
-                    onChange={(event) =>
-                      setCreateDraft((current) => ({ ...current, theme: event.target.value }))
-                    }
-                  >
-                    {themeOptions.map((item) => (
-                      <option key={item.name}>{item.name}</option>
-                    ))}
-                  </select>
-                </label>
-                {createTheme && (
-                  <div className="roomTemplateHint">
-                    <strong>{createTheme.template.title}</strong>
-                    <span>{createTheme.template.summary}</span>
-                  </div>
-                )}
                 <button className="primaryAction" disabled={busy}>
                   <Plus size={15} /> {busy ? "Creating…" : "Create room"}
                 </button>
@@ -541,6 +597,20 @@ export default function RoomHub({
                   />
                 </label>
                 <small id="room-code-help">Letters I/O and digits 0/1 are not used.</small>
+                <label>
+                  Choose your theme
+                  <select value={joinTheme} onChange={(event) => setJoinTheme(event.target.value)}>
+                    {themeOptions.map((item) => (
+                      <option key={item.name}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+                {joinThemeDefinition && (
+                  <div className="roomTemplateHint">
+                    <strong>{joinThemeDefinition.template.title}</strong>
+                    <span>{joinThemeDefinition.template.summary}</span>
+                  </div>
+                )}
                 <button className="primaryAction" disabled={busy || joinCode.length !== 6}>
                   <LogIn size={15} /> {busy ? "Joining…" : "Join room"}
                 </button>
@@ -565,9 +635,9 @@ export default function RoomHub({
             <header className="roomWorkspaceHead">
               <div>
                 <button className="roomBack" type="button" onClick={leaveRoomView}>← All rooms</button>
-                <p className="eyebrow">{isComplete ? "FINAL RESULT" : "LIVE ROOM"}</p>
+                <p className="eyebrow">{isComplete ? "FINAL RESULT" : isClosed ? "ROOM CLOSED" : "LIVE ROOM"}</p>
                 <h2 id="room-hub-title">{room.title}</h2>
-                <p>{room.theme} · Hosted by {room.hostName}</p>
+                <p>Participant-selected themes · Hosted by {room.hostName}</p>
               </div>
               <button className="roomCode" type="button" onClick={copyCode} aria-label={`Copy room code ${activeCode}`}>
                 <span>JOIN CODE</span>
@@ -589,9 +659,9 @@ export default function RoomHub({
                 <strong>{submissions.length}</strong>
                 <span>submitted</span>
               </div>
-              <div className={allSubmitted ? "ready" : ""}>
+              <div className={canFinalize || isComplete ? "ready" : ""}>
                 <Sparkles size={16} />
-                <strong>{allSubmitted ? "Ready" : `${Math.max(0, participants.length - submissions.length)} left`}</strong>
+                <strong>{isComplete ? "Complete" : canFinalize ? "Ready" : `${Math.max(0, participants.length - submissions.length)} left`}</strong>
                 <span>for analysis</span>
               </div>
             </div>
@@ -601,7 +671,7 @@ export default function RoomHub({
                 <aside className="roomRoster">
                   <header>
                     <h3>Participants</h3>
-                    <span>Live</span>
+                    <span>{isClosed ? "Closed" : "Live"}</span>
                   </header>
                   <div>
                     {participants.map((participant) => {
@@ -613,7 +683,10 @@ export default function RoomHub({
                           <RoomAvatar name={participant.displayName} photoURL={participant.photoURL} />
                           <span>
                             <strong>{participant.displayName}</strong>
-                            <small>{participant.userId === room.hostId ? "Host" : "Participant"}</small>
+                            <small>
+                              {participant.userId === room.hostId ? "Host" : "Participant"}
+                              {` · ${participant.theme || room.theme || "Theme pending"}`}
+                            </small>
                           </span>
                           <CheckCircle2 className={submitted ? "submitted" : "waiting"} size={17} />
                         </div>
@@ -623,6 +696,17 @@ export default function RoomHub({
                   <p>Entries stay private until the host reveals the result.</p>
                 </aside>
 
+                {isClosed ? (
+                  <section className="roomEntryForm roomClosedNotice" aria-live="polite">
+                    <span><Lock size={24} /></span>
+                    <p className="eyebrow">ENTRIES LOCKED</p>
+                    <h3>This room is closed</h3>
+                    <p>
+                      The host has stopped new joins and entry changes. Submitted thoughts are
+                      ready for final analysis.
+                    </p>
+                  </section>
+                ) : (
                 <form className="roomEntryForm" onSubmit={submitThought}>
                   <div>
                     <p className="eyebrow">YOUR ENTRY</p>
@@ -634,6 +718,14 @@ export default function RoomHub({
                       </div>
                     )}
                   </div>
+                  <label>
+                    Your theme
+                    <select value={entryTheme} onChange={(event) => setEntryTheme(event.target.value)}>
+                      {themeOptions.map((item) => (
+                        <option key={item.name}>{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label>
                     Title
                     <input
@@ -686,6 +778,7 @@ export default function RoomHub({
                     <CheckCircle2 size={15} /> {busy ? "Saving…" : ownSubmission ? "Update entry" : "Submit entry"}
                   </button>
                 </form>
+                )}
               </div>
             ) : (
               <div className="roomResults">
@@ -704,7 +797,7 @@ export default function RoomHub({
                       <span className="roomRank">{index + 1}</span>
                       <img src={entry.imageURL} alt={`Picture shared by ${entry.displayName}`} loading="lazy" decoding="async" />
                       <div>
-                        <small>{entry.displayName}</small>
+                        <small>{entry.displayName} · {entry.theme || room.theme || "Student Innovation"}</small>
                         <h3>{entry.title}</h3>
                         <p>{entry.thought}</p>
                         <strong>{entry.analysis.feedback}</strong>
@@ -719,19 +812,37 @@ export default function RoomHub({
               </div>
             )}
 
-            {isHost && !isComplete && (
+            {isHost && (
               <div className="roomHostBar">
                 <div>
                   <strong>Host controls</strong>
                   <span>
-                    {allSubmitted
-                      ? "Everyone has submitted. The final ranking is ready."
-                      : "Analysis unlocks when at least two participants have all submitted."}
+                    {isComplete
+                      ? "The result is final. You can still delete this room."
+                      : isClosed
+                        ? ranking.length >= 2
+                          ? "Room is closed. Submitted entries are ready for analysis."
+                          : "Room is closed, but at least two submitted entries are needed."
+                        : allSubmitted
+                          ? "Everyone has submitted. Analyze now or close the room first."
+                          : "Close the room anytime to stop new joins and lock current entries."}
                   </span>
                 </div>
-                <button className="primaryAction" type="button" onClick={finalizeRoom} disabled={!allSubmitted || busy}>
-                  <Sparkles size={15} /> {busy ? "Analyzing…" : "Analyze & reveal winner"}
-                </button>
+                <div className="roomAdminActions">
+                  {!isComplete && !isClosed && (
+                    <button className="roomCloseButton" type="button" onClick={closeRoom} disabled={busy}>
+                      <Lock size={15} /> Close room
+                    </button>
+                  )}
+                  {!isComplete && (
+                    <button className="primaryAction" type="button" onClick={finalizeRoom} disabled={!canFinalize || busy}>
+                      <Sparkles size={15} /> {busy ? "Working…" : "Analyze & reveal winner"}
+                    </button>
+                  )}
+                  <button className="roomDangerButton" type="button" onClick={deleteRoom} disabled={busy}>
+                    <Trash2 size={15} /> Delete room
+                  </button>
+                </div>
               </div>
             )}
           </div>

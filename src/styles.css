@@ -3281,6 +3281,68 @@ footer button {
 .roomHostBar strong { font: 600 14px var(--serif); }
 .roomHostBar span { color: var(--muted); font-size: 9px; }
 
+.roomAdminActions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px !important;
+  flex-wrap: wrap;
+}
+
+.roomCloseButton,
+.roomDangerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 39px;
+  border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent);
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 5px 5px 12px var(--shadow-dark), -5px -5px 12px var(--shadow-light);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.roomDangerButton {
+  border-color: color-mix(in srgb, #b33f33 28%, transparent);
+  color: #9f352d;
+}
+
+.roomCloseButton:hover { color: var(--accent); transform: translateY(-1px); }
+.roomDangerButton:hover { background: color-mix(in srgb, #b33f33 10%, var(--paper)); transform: translateY(-1px); }
+.roomCloseButton:disabled,
+.roomDangerButton:disabled { cursor: not-allowed; opacity: .55; transform: none; }
+
+.roomClosedNotice {
+  min-height: 330px;
+  place-items: center;
+  align-content: center;
+  text-align: center;
+}
+
+.roomClosedNotice > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 20px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 3px 3px 8px color-mix(in srgb, var(--shadow-dark) 72%, transparent), inset -3px -3px 8px var(--shadow-light);
+}
+
+.roomClosedNotice > p:not(.eyebrow) {
+  max-width: 460px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
 .roomWinner {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -3340,6 +3402,8 @@ footer button {
   .roomRoster > div { grid-template-columns: 1fr; }
   .roomEntryForm, .roomRoster { padding: 17px; }
   .roomHostBar { align-items: stretch; flex-direction: column; }
+  .roomAdminActions { align-items: stretch; flex-direction: column; }
+  .roomAdminActions > button { width: 100%; }
   .roomWinner { grid-template-columns: auto 1fr; }
   .roomWinner > .roomScore { grid-column: 2; justify-self: start; }
   .roomRanking article { grid-template-columns: 32px 1fr; padding: 14px; }

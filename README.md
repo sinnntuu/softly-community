@@ -12,8 +12,9 @@ notifications, connections, and private real-time chat.
 - Private 10-star meaningfulness analysis using theme relevance, depth,
   reflection, specificity, and usefulness—not likes or popularity
 - Live Top 3 participant leaderboard based on each writer's best meaningful story
-- Code-based live thought rooms for multiple participants, picture-led entries,
-  host-controlled judging, meaningfulness-ranked winners, and downloadable results
+- Code-based live thought rooms with participant-selected themes, picture-led
+  entries, host-only close/delete controls, meaningfulness-ranked winners, and
+  downloadable results
 - Add a compressed story photo without paid storage
 - Share YouTube, Vimeo, Google Drive, MP4, WebM, or OGG videos
 - Real-time likes
