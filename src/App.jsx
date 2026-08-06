@@ -33,7 +33,76 @@ import {
   googleProvider,
 } from "./firebase";
 
-const categories = ["All stories", "Design", "Culture", "Technology", "Life"];
+const themeOptions = [
+  {
+    name: "Creative Expression",
+    icon: "✦",
+    description: "Art, design, photography and original creative ideas.",
+    keywords: ["art", "design", "creative", "photo", "photography", "expression"],
+  },
+  {
+    name: "Culture & Heritage",
+    icon: "◈",
+    description: "Traditions, identity, local stories and shared heritage.",
+    keywords: ["culture", "heritage", "tradition", "identity", "local", "history"],
+  },
+  {
+    name: "Technology for Good",
+    icon: "⌁",
+    description: "Useful technology that improves everyday life.",
+    keywords: ["technology", "tech", "digital", "innovation", "app", "future"],
+  },
+  {
+    name: "Life & Wellbeing",
+    icon: "♡",
+    description: "Personal growth, mental health and meaningful living.",
+    keywords: ["life", "wellbeing", "health", "growth", "mind", "experience"],
+  },
+  {
+    name: "Nature & Sustainability",
+    icon: "⌇",
+    description: "Nature, climate action and sustainable choices.",
+    keywords: ["nature", "climate", "green", "environment", "sustainable", "earth"],
+  },
+  {
+    name: "Student Innovation",
+    icon: "△",
+    description: "Student-built solutions, experiments and fresh thinking.",
+    keywords: ["student", "college", "school", "idea", "project", "solution"],
+  },
+  {
+    name: "Social Impact",
+    icon: "◎",
+    description: "Ideas that strengthen communities and create change.",
+    keywords: ["social", "community", "impact", "people", "change", "help"],
+  },
+];
+const themes = ["All themes", ...themeOptions.map((item) => item.name)];
+const legacyThemeMap = {
+  Design: "Creative Expression",
+  Culture: "Culture & Heritage",
+  Technology: "Technology for Good",
+  Life: "Life & Wellbeing",
+};
+const storyTheme = (post) =>
+  post?.theme || legacyThemeMap[post?.category] || post?.category || "Creative Expression";
+const storyScore = (post, likeCount = 0, commentCount = 0) => {
+  const theme = storyTheme(post);
+  const definition = themeOptions.find((item) => item.name === theme);
+  const text = `${post?.title || ""} ${post?.excerpt || ""} ${post?.body || ""}`.toLowerCase();
+  const relevance = Math.min(
+    6,
+    new Set((definition?.keywords || []).filter((keyword) => text.includes(keyword))).size * 2,
+  );
+  const depth = Math.min(5, Math.floor((post?.body?.trim?.().length || 0) / 350));
+  const photo = post?.mediaType === "image" ? 3 : 0;
+  return {
+    total: likeCount * 5 + commentCount * 3 + relevance + depth + photo,
+    relevance,
+    depth,
+    photo,
+  };
+};
 const tones = ["peach", "sage", "sky"];
 
 const initials = (name = "Softly writer") =>
@@ -369,7 +438,7 @@ export default function App() {
   const [incoming, setIncoming] = useState([]);
   const [messages, setMessages] = useState(previewMessages);
   const [allMessages, setAllMessages] = useState(previewMessages);
-  const [category, setCategory] = useState("All stories");
+  const [themeFilter, setThemeFilter] = useState("All themes");
   const [search, setSearch] = useState("");
   const [feedMode, setFeedMode] = useState("Latest");
   const [commentDrafts, setCommentDrafts] = useState({});
@@ -404,7 +473,7 @@ export default function App() {
     title: "",
     excerpt: "",
     body: "",
-    category: "Life",
+    theme: "Student Innovation",
     mediaType: "",
     mediaURL: "",
   });
@@ -607,15 +676,15 @@ export default function App() {
     const term = search.trim().toLowerCase();
     const savedIds = new Set(bookmarks.map((item) => item.postId));
     const matches = posts.filter((post) => {
-      const categoryMatch =
-        category === "All stories" || post.category === category;
+      const themeMatch =
+        themeFilter === "All themes" || storyTheme(post) === themeFilter;
       const searchMatch =
         !term ||
-        `${post.title} ${post.excerpt} ${post.body} ${post.category} ${post.authorName}`
+        `${post.title} ${post.excerpt} ${post.body} ${storyTheme(post)} ${post.authorName} ${post.authorUsername || ""}`
           .toLowerCase()
           .includes(term);
       const savedMatch = feedMode !== "Saved" || savedIds.has(post.id);
-      return categoryMatch && searchMatch && savedMatch;
+      return themeMatch && searchMatch && savedMatch;
     });
     if (feedMode === "Popular") {
       return [...matches].sort(
@@ -628,7 +697,7 @@ export default function App() {
     return [...matches].sort(
       (a, b) => timeValue(b.createdAt) - timeValue(a.createdAt),
     );
-  }, [posts, search, category, feedMode, bookmarks, likesByPost]);
+  }, [posts, search, themeFilter, feedMode, bookmarks, likesByPost]);
 
   const connections = useMemo(() => {
     const ids = new Set([
@@ -680,6 +749,47 @@ export default function App() {
     () => new Set(bookmarks.map((item) => item.postId)),
     [bookmarks],
   );
+  const leaderboardEntries = useMemo(() => {
+    const bestByWriter = new Map();
+    posts.forEach((post) => {
+      const likeCount = likesByPost[post.id]?.length || 0;
+      const commentCount = commentsByPost[post.id]?.length || 0;
+      const breakdown = storyScore(post, likeCount, commentCount);
+      const liveAuthor =
+        post.authorId === user?.uid
+          ? profile
+          : people.find((person) => person.uid === post.authorId);
+      const entry = {
+        postId: post.id,
+        authorId: post.authorId,
+        authorName:
+          liveAuthor?.displayName || post.authorName || "Softly writer",
+        username: liveAuthor?.username || post.authorUsername || "",
+        photoURL: liveAuthor?.photoURL || post.authorPhoto || "",
+        title: post.title,
+        theme: storyTheme(post),
+        score: breakdown.total,
+        breakdown,
+        createdAt: post.createdAt,
+      };
+      const current = bestByWriter.get(post.authorId);
+      if (
+        !current ||
+        entry.score > current.score ||
+        (entry.score === current.score &&
+          timeValue(entry.createdAt) > timeValue(current.createdAt))
+      ) {
+        bestByWriter.set(post.authorId, entry);
+      }
+    });
+    return [...bestByWriter.values()]
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          timeValue(b.createdAt) - timeValue(a.createdAt),
+      )
+      .slice(0, 3);
+  }, [posts, likesByPost, commentsByPost, people, profile, user]);
   const notificationItems = useMemo(() => {
     if (!user) return [];
     const personFor = (uid) =>
@@ -765,6 +875,9 @@ export default function App() {
   const unreadNotifications = notificationItems.filter(
     (item) => !seenNotifications.includes(item.id),
   ).length;
+  const unreadMessages = notificationItems.filter(
+    (item) => item.type === "message" && !seenNotifications.includes(item.id),
+  ).length;
 
   useEffect(() => {
     knownNotificationIds.current = new Set();
@@ -797,7 +910,7 @@ export default function App() {
     if (term.length < 2) return [];
     const values = new Set();
     posts.forEach((post) => {
-      [post.title, post.authorName, post.category].forEach((value) => {
+      [post.title, post.authorName, post.authorUsername, storyTheme(post)].forEach((value) => {
         if (value?.toLowerCase().includes(term)) values.add(value);
       });
     });
@@ -875,6 +988,15 @@ export default function App() {
     action();
     return true;
   };
+
+  const openChatPanel = () =>
+    requireUser(() => {
+      setNotificationsOpen(false);
+      setSocialOpen(true);
+      if (!activeChat && connections.length === 1) {
+        setActiveChat(connections[0]);
+      }
+    });
 
   const openProfileEditor = () => {
     setSocialOpen(false);
@@ -1035,9 +1157,11 @@ export default function App() {
         title: draft.title,
         excerpt: draft.excerpt,
         body: draft.body,
-        category: draft.category,
+        theme: draft.theme,
+        category: draft.theme,
         authorId: user.uid,
         authorName: currentName,
+        authorUsername: profile?.username || "",
         authorPhoto: currentPhoto,
         createdAt: serverTimestamp(),
       };
@@ -1051,7 +1175,7 @@ export default function App() {
         title: "",
         excerpt: "",
         body: "",
-        category: "Life",
+        theme: "Student Innovation",
         mediaType: "",
         mediaURL: "",
       });
@@ -1686,19 +1810,109 @@ export default function App() {
         </div>
       </section>
 
+      <section className="eventChallenge shell" id="challenge">
+        <div className="eventIntro">
+          <p className="eyebrow">LIVE COMMUNITY EVENT</p>
+          <h2>Choose a theme. Share your perspective.</h2>
+          <p>
+            Pick an inbuilt theme, add an original photo and publish your
+            story or thoughts. The Top 3 updates live as the community engages.
+          </p>
+          <div className="eventActions">
+            <button
+              className="primaryAction"
+              onClick={() => requireUser(() => setComposerOpen(true))}
+            >
+              Participate now ↗
+            </button>
+            <span>{themeOptions.length} themes · live ranking</span>
+          </div>
+          <div className="themeDeck" aria-label="Built-in event themes">
+            {themeOptions.map((item) => (
+              <button
+                type="button"
+                key={item.name}
+                className={themeFilter === item.name ? "active" : ""}
+                onClick={() => {
+                  setThemeFilter(item.name);
+                  document.getElementById("stories")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                title={item.description}
+              >
+                <span>{item.icon}</span>
+                {item.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="leaderboardCard">
+          <header>
+            <div>
+              <p className="eyebrow">TOP PARTICIPANTS</p>
+              <h3>Live Top 3</h3>
+            </div>
+            <span className="liveBadge"><i /> LIVE</span>
+          </header>
+          {leaderboardEntries.length ? (
+            <div className="leaderboardList">
+              {leaderboardEntries.map((entry, index) => (
+                <button
+                  type="button"
+                  key={entry.authorId}
+                  className={`leaderboardEntry rank${index + 1}`}
+                  onClick={() => {
+                    setExpanded(entry.postId);
+                    document.getElementById(`story-${entry.postId}`)?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
+                  }}
+                >
+                  <span className="rankMedal">{["1", "2", "3"][index]}</span>
+                  <ProfileAvatar
+                    person={{
+                      displayName: entry.authorName,
+                      photoURL: entry.photoURL,
+                    }}
+                    tone={tones[index]}
+                  />
+                  <span className="leaderIdentity">
+                    <strong>
+                      {entry.username ? `@${entry.username}` : entry.authorName}
+                    </strong>
+                    <small>{entry.theme}</small>
+                  </span>
+                  <span className="leaderScore">{entry.score}<small>PTS</small></span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="leaderboardEmpty">
+              <strong>The podium is open.</strong>
+              <span>Publish the first themed entry to take the lead.</span>
+            </div>
+          )}
+          <p className="scoringNote">
+            Score: likes × 5, comments × 3, theme relevance, story depth and
+            an original photo bonus.
+          </p>
+        </div>
+      </section>
+
       <section className="stories shell" id="stories">
         <div className="sectionHead">
           <div>
-            <p className="eyebrow">FROM THE COMMUNITY</p>
-            <h2>Fresh perspectives</h2>
+            <p className="eyebrow">THEME CHALLENGE ENTRIES</p>
+            <h2>Stories in the event</h2>
           </div>
           <div className="searchField">
-            <label htmlFor="search">Search stories</label>
+            <label htmlFor="search">Search entries</label>
             <input
               id="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search stories or writers"
+              placeholder="Search themes, stories or usernames"
             />
             <span>⌕</span>
             {searchSuggestions.length > 0 && (
@@ -1714,12 +1928,12 @@ export default function App() {
         </div>
 
         <div className="discoveryControls">
-          <div className="filters" aria-label="Story categories">
-            {categories.map((item) => (
+          <div className="filters" aria-label="Event themes">
+            {themes.map((item) => (
               <button
                 key={item}
-                className={category === item ? "active" : ""}
-                onClick={() => setCategory(item)}
+                className={themeFilter === item ? "active" : ""}
+                onClick={() => setThemeFilter(item)}
               >
                 {item}
               </button>
@@ -1747,6 +1961,11 @@ export default function App() {
             {visiblePosts.map((post, index) => {
               const postLikes = likesByPost[post.id] || [];
               const postComments = commentsByPost[post.id] || [];
+              const postAnalysis = storyScore(
+                post,
+                postLikes.length,
+                postComments.length,
+              );
               const liked = user ? postLikes.includes(user.uid) : false;
               const bookmarked = bookmarkedPostIds.has(post.id);
               const liveAuthor =
@@ -1790,7 +2009,7 @@ export default function App() {
                         ▶ {videoDetails.provider}
                       </span>
                     )}
-                    <span>{post.category?.toUpperCase()}</span>
+                    <span>{storyTheme(post).toUpperCase()}</span>
                   </div>
                   <div className="storyBody">
                     <div className="meta">
@@ -1806,7 +2025,7 @@ export default function App() {
                           : "JUST NOW"}
                       </span>
                       <span>
-                        {Math.max(2, Math.ceil((post.body?.length || 0) / 900))}{" "}
+                        {postAnalysis.total} PTS · {Math.max(2, Math.ceil((post.body?.length || 0) / 900))}{" "}
                         MIN READ
                       </span>
                     </div>
@@ -2014,14 +2233,27 @@ export default function App() {
         </div>
       </footer>
 
+      <button
+        type="button"
+        className="floatingChatButton"
+        onClick={openChatPanel}
+        aria-label={`Open chat${unreadMessages ? `, ${unreadMessages} new messages` : ""}`}
+      >
+        <span className="chatGlyph" aria-hidden="true">◌</span>
+        <span>Chat</span>
+        {unreadMessages > 0 && (
+          <strong>{Math.min(unreadMessages, 9)}</strong>
+        )}
+      </button>
+
       {composerOpen && (
         <div className="modalBackdrop">
           <section className="composer" role="dialog" aria-modal="true">
             <button className="modalClose" onClick={() => setComposerOpen(false)}>
               ×
             </button>
-            <p className="eyebrow">NEW STORY</p>
-            <h2>Share an idea.</h2>
+            <p className="eyebrow">THEME CHALLENGE ENTRY</p>
+            <h2>Share your perspective.</h2>
             <form onSubmit={publish}>
               <label>
                 Title
@@ -2067,8 +2299,8 @@ export default function App() {
               <div className="mediaComposer">
                 <div className="mediaComposerHead">
                   <div>
-                    <strong>Add media</strong>
-                    <span>Optional</span>
+                    <strong>Add your event photo</strong>
+                    <span>Recommended</span>
                   </div>
                   {draft.mediaType && (
                     <button
@@ -2140,23 +2372,26 @@ export default function App() {
                 )}
               </div>
               <label>
-                Category
+                Choose your theme
                 <select
-                  value={draft.category}
+                  value={draft.theme}
                   onChange={(event) =>
-                    setDraft({ ...draft, category: event.target.value })
+                    setDraft({ ...draft, theme: event.target.value })
                   }
                 >
-                  {categories.slice(1).map((item) => (
-                    <option key={item}>{item}</option>
+                  {themeOptions.map((item) => (
+                    <option key={item.name}>{item.name}</option>
                   ))}
                 </select>
               </label>
+              <p className="selectedThemeHelp">
+                {themeOptions.find((item) => item.name === draft.theme)?.description}
+              </p>
               <button
                 className="publishButton"
                 disabled={storyPublishing || mediaPreparing}
               >
-                {storyPublishing ? "Publishing…" : "Publish story ↗"}
+                {storyPublishing ? "Publishing…" : "Submit event entry ↗"}
               </button>
             </form>
           </section>

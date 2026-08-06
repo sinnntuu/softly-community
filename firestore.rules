@@ -90,6 +90,15 @@ service cloud.firestore {
       );
     }
 
+    function validPostTheme() {
+      return !request.resource.data.keys().hasAny(["theme"])
+        || (
+          request.resource.data.theme is string
+          && request.resource.data.theme.size() >= 2
+          && request.resource.data.theme.size() <= 60
+        );
+    }
+
     match /users/{userId} {
       allow read: if signedIn();
       allow create, update: if signedIn()
@@ -128,11 +137,13 @@ service cloud.firestore {
         && request.resource.data.body is string
         && request.resource.data.body.size() >= 40
         && request.resource.data.body.size() <= 6000
-        && validPostMedia();
+        && validPostMedia()
+        && validPostTheme();
       allow update: if signedIn()
         && resource.data.authorId == request.auth.uid
         && request.resource.data.authorId == resource.data.authorId
-        && validPostMedia();
+        && validPostMedia()
+        && validPostTheme();
       allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
     }
 

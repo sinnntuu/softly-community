@@ -8,6 +8,9 @@ notifications, connections, and private real-time chat.
 
 - Google sign-in with Firebase Authentication
 - Create and read public blog posts
+- Theme Challenge event mode with seven built-in participation themes
+- Live Top 3 participant leaderboard using likes, comments, theme relevance,
+  story depth, and an original-photo bonus
 - Add a compressed story photo without paid storage
 - Share YouTube, Vimeo, Google Drive, MP4, WebM, or OGG videos
 - Real-time likes
@@ -17,6 +20,7 @@ notifications, connections, and private real-time chat.
 - Editable display name, unique `@username`, bio, location, website, and profile photo
 - Find people by username or display name
 - Follow requests, connections, and private real-time chat
+- Always-visible floating chat shortcut with unread-message count
 - Notifications for follows, likes, comments, messages and call invitations
 - Instagram-style chat sharing for secure links, compressed photos and videos
 - Audio and video-call invitations inside private chat using Jitsi Meet
