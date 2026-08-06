@@ -1065,6 +1065,24 @@ export default function App() {
     return people.filter((person) => ids.has(person.uid));
   }, [people, outgoing, incoming]);
 
+  const followers = useMemo(() => {
+    const ids = new Set(
+      incoming
+        .filter((item) => item.status === "accepted")
+        .map((item) => item.from),
+    );
+    return people.filter((person) => ids.has(person.uid));
+  }, [people, incoming]);
+
+  const following = useMemo(() => {
+    const ids = new Set(
+      outgoing
+        .filter((item) => item.status === "accepted")
+        .map((item) => item.to),
+    );
+    return people.filter((person) => ids.has(person.uid));
+  }, [people, outgoing]);
+
   const filteredPeople = useMemo(() => {
     const term = peopleSearch.trim().toLowerCase().replace(/^@/, "");
     if (!term) return people;
@@ -2968,12 +2986,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </button>
         <button
           type="button"
-          className={socialOpen && socialTarget === "people" ? "active" : ""}
-          onClick={() => openSocialSection("people")}
-          aria-label="Find people to follow"
+          className={socialOpen && socialTarget === "followers" ? "active" : ""}
+          onClick={() => openSocialSection("followers")}
+          aria-label={`Open followers${followers.length ? `, ${followers.length} people` : ""}`}
         >
           <UserPlus size={18} />
-          <span>Follow</span>
+          <span>Followers</span>
         </button>
         <button
           type="button"
@@ -2987,12 +3005,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         </button>
         <button
           type="button"
-          className={socialOpen && socialTarget === "accept" ? "active" : ""}
-          onClick={() => openSocialSection("accept")}
-          aria-label="Review and accept follow requests"
+          className={socialOpen && socialTarget === "following" ? "active" : ""}
+          onClick={() => openSocialSection("following")}
+          aria-label={`Open following${following.length ? `, ${following.length} people` : ""}`}
         >
           <UserCheck size={18} />
-          <span>Accept</span>
+          <span>Following</span>
         </button>
         <button
           type="button"
@@ -3500,64 +3518,67 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             role="dialog"
             aria-modal="true"
           >
-            <button
-              className="modalClose modalBack"
-              type="button"
-              onClick={() => {
-                setSocialOpen(false);
-                setActiveChat(null);
-              }}
-              aria-label="Back from community panel"
-            >
-              <ArrowLeft size={14} /> <span>Back</span>
-            </button>
+            {!activeChat && (
+              <button
+                className="modalClose modalBack"
+                type="button"
+                onClick={() => {
+                  setSocialOpen(false);
+                  setActiveChat(null);
+                }}
+                aria-label="Back from community panel"
+              >
+                <ArrowLeft size={14} /> <span>Back</span>
+              </button>
+            )}
             <div className="socialSidebar">
               <p className="eyebrow">YOUR COMMUNITY</p>
-              <h2>People & chat</h2>
+              <h2>
+                {socialTarget === "followers"
+                  ? "Followers"
+                  : socialTarget === "requests"
+                    ? "Follow requests"
+                    : socialTarget === "following"
+                      ? "Following"
+                      : "Discover people"}
+              </h2>
 
-              <div className="profileSummary">
-                <ProfileAvatar
-                  person={{ displayName: currentName, photoURL: currentPhoto }}
-                  tone="peach"
-                  large
-                />
-                <div>
-                  <strong>{currentName}</strong>
-                  <small>
-                    {profile?.username
-                      ? `@${profile.username}`
-                      : "Choose your username"}
-                  </small>
-                  {profile?.bio && <p>{profile.bio}</p>}
-                  {(profile?.location || profile?.website) && (
-                    <div className="profileMeta">
-                      {profile.location && <span>⌖ {profile.location}</span>}
-                      {profile.website && (
-                        <a href={profile.website} target="_blank" rel="noopener noreferrer">
-                          ↗ {linkHost(profile.website)}
-                        </a>
-                      )}
-                    </div>
-                  )}
+              {socialTarget === "people" && (
+                <div className="profileSummary">
+                  <ProfileAvatar
+                    person={{ displayName: currentName, photoURL: currentPhoto }}
+                    tone="peach"
+                    large
+                  />
+                  <div>
+                    <strong>{currentName}</strong>
+                    <small>
+                      {profile?.username
+                        ? `@${profile.username}`
+                        : "Choose your username"}
+                    </small>
+                    {profile?.bio && <p>{profile.bio}</p>}
+                  </div>
+                  <div className="profileSummaryActions">
+                    <button onClick={openProfileEditor}>Edit profile</button>
+                    <button className="profileLogout" onClick={logout}>Log out</button>
+                  </div>
                 </div>
-                <div className="profileSummaryActions">
-                  <button onClick={openProfileEditor}>Edit profile</button>
-                  <button className="profileLogout" onClick={logout}>Log out</button>
-                </div>
-              </div>
+              )}
 
-              {incomingRequests.length > 0 && (
+              {socialTarget === "requests" && (
                 <div className="requestSection" id="follow-requests">
-                  <h3><Inbox size={14} /> Follow requests</h3>
-                  {incomingRequests.map((request) => {
-                    const person = people.find(
-                      (item) => item.uid === request.from,
-                    );
+                  <h3><Inbox size={14} /> Pending requests</h3>
+                  {incomingRequests.length ? incomingRequests.map((request) => {
+                    const person = people.find((item) => item.uid === request.from);
                     if (!person) return null;
                     return (
                       <div className="personRow" key={request.id}>
                         <ProfileAvatar person={person} tone="peach" />
-                        <strong>{person.displayName}</strong>
+                        <div className="personName">
+                          <strong>{person.displayName}</strong>
+                          <small>{person.username ? `@${person.username}` : "Softly writer"}</small>
+                        </div>
                         <div className="requestActions">
                           <button
                             className="acceptRequest"
@@ -3576,86 +3597,113 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                         </div>
                       </div>
                     );
-                  })}
+                  }) : (
+                    <p className="directoryEmpty">No pending follow requests.</p>
+                  )}
                 </div>
               )}
 
-              <div className="peopleSection" id="people-directory">
-                <h3><UserPlus size={14} /> {peopleSearch ? "Search results" : "Suggested people"}</h3>
-                <div className="peopleSearch">
-                  <span>@</span>
-                  <input
-                    value={peopleSearch}
-                    onChange={(event) => setPeopleSearch(event.target.value)}
-                    placeholder="Find by username or name"
-                    aria-label="Find people by username or name"
-                  />
-                </div>
-                {filteredPeople.length ? (
-                  filteredPeople.map((person) => {
-                    const status = relationship(person);
-                    return (
+              {(socialTarget === "followers" || socialTarget === "following") && (
+                <div className="peopleSection communityPeopleList">
+                  <h3>
+                    {socialTarget === "followers" ? (
+                      <><UserPlus size={14} /> People following you</>
+                    ) : (
+                      <><UserCheck size={14} /> People you follow</>
+                    )}
+                  </h3>
+                  {(socialTarget === "followers" ? followers : following).length ? (
+                    (socialTarget === "followers" ? followers : following).map((person) => (
                       <div className="personRow" key={person.uid}>
                         <ProfileAvatar person={person} tone="sage" />
                         <div className="personName">
                           <strong>{person.displayName}</strong>
-                          <small>
-                            {person.username
-                              ? `@${person.username}`
-                              : "No username yet"}
-                            {" · "}
-                            {status === "connected"
-                              ? "Connected"
-                              : status === "requested"
-                                ? "Request sent"
-                                : status === "incoming"
-                                  ? "Wants to follow you"
-                                  : "Softly writer"}
-                          </small>
+                          <small>{person.username ? `@${person.username}` : "Softly writer"}</small>
                         </div>
-                        {status === "connected" ? (
-                          <button
-                            className="personAction connected"
-                            type="button"
-                            onClick={() => openConversation(person)}
-                          >
-                            <MessageCircle size={13} /> Chat
-                          </button>
-                        ) : status === "none" ? (
-                          <button
-                            className="personAction"
-                            onClick={() => requestFollow(person)}
-                          >
-                            <UserPlus size={13} /> Follow
-                          </button>
-                        ) : status === "incoming" ? (
-                          <button
-                            className="personAction"
-                            onClick={() => {
-                              const request = incoming.find(
-                                (item) => item.from === person.uid,
-                              );
-                              if (request) answerRequest(request, true);
-                            }}
-                          >
-                            <UserCheck size={13} /> Accept
-                          </button>
-                        ) : (
-                          <button className="personAction muted" disabled>
-                            <Clock3 size={13} /> Pending
-                          </button>
-                        )}
+                        <button
+                          className="personAction connected"
+                          type="button"
+                          onClick={() => openConversation(person)}
+                        >
+                          <MessageCircle size={13} /> Chat
+                        </button>
                       </div>
-                    );
-                  })
-                ) : (
-                  <p className="quietText">
-                    {peopleSearch
-                      ? "No matching people found."
-                      : "More people will appear here after they join."}
-                  </p>
-                )}
-              </div>
+                    ))
+                  ) : (
+                    <p className="directoryEmpty">
+                      {socialTarget === "followers"
+                        ? "No followers yet."
+                        : "You are not following anyone yet."}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {socialTarget === "people" && (
+                <div className="peopleSection" id="people-directory">
+                  <h3><UserPlus size={14} /> {peopleSearch ? "Search results" : "Suggested people"}</h3>
+                  <div className="peopleSearch">
+                    <span>@</span>
+                    <input
+                      value={peopleSearch}
+                      onChange={(event) => setPeopleSearch(event.target.value)}
+                      placeholder="Find by username or name"
+                      aria-label="Find people by username or name"
+                    />
+                  </div>
+                  {filteredPeople.length ? (
+                    filteredPeople.map((person) => {
+                      const status = relationship(person);
+                      return (
+                        <div className="personRow" key={person.uid}>
+                          <ProfileAvatar person={person} tone="sage" />
+                          <div className="personName">
+                            <strong>{person.displayName}</strong>
+                            <small>
+                              {person.username ? `@${person.username}` : "No username yet"}
+                              {" · "}
+                              {status === "connected"
+                                ? "Connected"
+                                : status === "requested"
+                                  ? "Request sent"
+                                  : status === "incoming"
+                                    ? "Wants to follow you"
+                                    : "Softly writer"}
+                            </small>
+                          </div>
+                          {status === "connected" ? (
+                            <button className="personAction connected" type="button" onClick={() => openConversation(person)}>
+                              <MessageCircle size={13} /> Chat
+                            </button>
+                          ) : status === "none" ? (
+                            <button className="personAction" onClick={() => requestFollow(person)}>
+                              <UserPlus size={13} /> Follow
+                            </button>
+                          ) : status === "incoming" ? (
+                            <button
+                              className="personAction"
+                              onClick={() => {
+                                const request = incoming.find((item) => item.from === person.uid);
+                                if (request) answerRequest(request, true);
+                              }}
+                            >
+                              <UserCheck size={13} /> Accept
+                            </button>
+                          ) : (
+                            <button className="personAction muted" disabled>
+                              <Clock3 size={13} /> Pending
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="directoryEmpty">
+                      {peopleSearch ? "No matching people found." : "More people will appear here after they join."}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="chatArea">

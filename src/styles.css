@@ -1220,7 +1220,7 @@ footer button {
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   border-radius: 28px;
-  padding: 42px;
+  padding: 78px 42px 42px;
   background: var(--paper);
   box-shadow:
     22px 22px 50px rgba(33, 35, 31, 0.35),
@@ -1251,6 +1251,8 @@ footer button {
 }
 
 .modalBack {
+  left: 24px;
+  right: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1705,10 +1707,35 @@ footer button {
   z-index: 5;
 }
 
+.socialPanel.chatFocus {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(760px, 100%);
+}
+
+.socialPanel.chatFocus .socialSidebar { display: none; }
+
+.socialPanel.directoryFocus {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(680px, 100%);
+}
+
+.socialPanel.directoryFocus .chatArea { display: none; }
+
 .socialSidebar {
   overflow-y: auto;
-  padding: 42px 32px;
+  padding: 78px 32px 42px;
   border-right: 1px solid rgba(100, 104, 98, 0.18);
+}
+
+.directoryEmpty {
+  margin: 16px 0 0;
+  border: 1px dashed color-mix(in srgb, var(--muted) 28%, transparent);
+  border-radius: 18px;
+  padding: 22px 18px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+  text-align: center;
 }
 
 .socialSidebar h2 {
@@ -2147,7 +2174,7 @@ footer button {
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 24px 60px 18px 28px;
+  padding: 18px 24px;
   border-bottom: 1px solid rgba(103, 107, 100, 0.15);
 }
 
@@ -2290,7 +2317,8 @@ footer button {
   align-items: center;
   gap: 5px;
   margin-top: 7px;
-  opacity: 0.72;
+  opacity: 1;
+  visibility: visible;
   transition: opacity 160ms ease;
 }
 
@@ -2668,7 +2696,7 @@ footer button {
   }
 
   .composer {
-    padding: 34px 22px 24px;
+    padding: 76px 22px 24px;
   }
 
   .composer form {
@@ -2745,7 +2773,7 @@ footer button {
 
   .socialSidebar {
     height: 48%;
-    padding: 34px 20px 20px;
+    padding: 76px 20px 20px;
     border-right: 0;
     border-bottom: 1px solid rgba(100, 104, 98, 0.18);
   }
@@ -2852,6 +2880,8 @@ footer button {
 
 .notificationPanel h2 { margin: 3px 0 0; font: 500 30px var(--serif); }
 .notificationPanel .modalClose { position: static; flex: 0 0 auto; }
+.notificationPanel .modalBack { order: -1; }
+.notificationPanel > header > div { flex: 1; min-width: 0; }
 .notificationTools {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2972,13 +3002,24 @@ footer button {
 .storyBody { overflow: hidden; }
 .communityCard .byline { flex-wrap: wrap; }
 .storyActions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(40px, 44px));
   align-items: center;
   justify-content: flex-start;
-  gap: 7px;
-  flex: 0 0 calc(100% - 49px);
-  max-width: calc(100% - 49px);
-  margin: 10px 0 0 49px;
+  gap: 8px;
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+  margin: 12px 0 0;
+  padding-left: 49px;
+  overflow: visible;
+  box-sizing: border-box;
+}
+.storyActions > button,
+.storyActions .downloadStoryButton {
+  display: inline-flex;
+  visibility: visible;
+  opacity: 1;
 }
 .storyActions .likeButton { margin-left: 0; }
 .commentButton { width: auto; min-width: 40px; border-radius: 999px; padding-inline: 9px; color: var(--accent); font-size: 10px; }
@@ -3383,6 +3424,8 @@ footer button {
     gap: 6px;
     margin-left: 0;
     margin-top: 5px;
+    padding-left: 0;
+    justify-content: stretch;
     overflow: visible;
   }
   .communityCard .storyActions {
@@ -3500,11 +3543,11 @@ footer button {
   position: sticky;
   z-index: 8;
   top: 0;
-  float: right;
+  float: none;
   width: auto;
   min-width: 46px;
   height: 46px;
-  margin: -14px -14px 0 12px;
+  margin: -14px 0 18px;
 }
 
 .roomHero {
@@ -4037,7 +4080,7 @@ footer button {
 @media (max-width: 640px) {
   .roomBackdrop { padding: 0; }
   .roomHub { width: 100%; max-height: 100dvh; min-height: 100dvh; border: 0; border-radius: 0; padding: 22px 14px 100px; }
-  .roomHub > .modalClose { top: 5px; margin: -3px 0 0 8px; }
+  .roomHub > .modalClose { top: 5px; margin: 0 0 14px; }
   .roomHero { grid-template-columns: 1fr; gap: 14px; padding-right: 38px; }
   .roomHeroIcon { width: 50px; height: 50px; }
   .roomHero h2, .roomWorkspaceHead h2 { font-size: 35px; letter-spacing: -1.2px; }
