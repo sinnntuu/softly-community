@@ -65,11 +65,14 @@ import {
   MessageSquareText,
   Palette,
   Paperclip,
+  Pencil,
   Search as SearchIcon,
   Send,
   Share2,
   Sparkles,
   Star,
+  Trash2,
+  Undo2,
   UserCheck,
   UserPlus,
   UsersRound,
@@ -664,6 +667,7 @@ export default function App() {
   const knownNotificationIds = useRef(new Set());
   const notificationsReady = useRef(false);
   const messageListRef = useRef(null);
+  const undoMessageTimerRef = useRef(null);
   const [postToDelete, setPostToDelete] = useState(null);
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
@@ -673,6 +677,9 @@ export default function App() {
   const [chatSearch, setChatSearch] = useState("");
   const [activeChat, setActiveChat] = useState(previewConnection);
   const [message, setMessage] = useState("");
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [messageActionBusy, setMessageActionBusy] = useState("");
+  const [deletedMessage, setDeletedMessage] = useState(null);
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [attachmentPreparing, setAttachmentPreparing] = useState(false);
   const [chatAttachment, setChatAttachment] = useState({
@@ -697,6 +704,15 @@ export default function App() {
     website: "",
     photoURL: "",
   });
+
+  useEffect(
+    () => () => {
+      if (undoMessageTimerRef.current) {
+        window.clearTimeout(undoMessageTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const overlayOpen =
@@ -1435,8 +1451,21 @@ export default function App() {
       setNotificationsOpen(false);
       setSocialTarget("chat");
       setActiveChat(null);
+      setEditingMessage(null);
+      setMessage("");
       setSocialOpen(true);
     });
+
+  const openConversation = (person) => {
+    if (!person) return;
+    setNotificationsOpen(false);
+    setSocialTarget("chat");
+    setActiveChat(person);
+    setEditingMessage(null);
+    setMessage("");
+    setAttachmentOpen(false);
+    setSocialOpen(true);
+  };
 
   const openSocialSection = (target) =>
     requireUser(() => {
@@ -1682,14 +1711,18 @@ export default function App() {
     }
     const id = `${postId}_${user.uid}`;
     const liked = likes.some((item) => item.id === id);
-    if (liked) {
-      await deleteDoc(doc(db, "likes", id));
-    } else {
-      await setDoc(doc(db, "likes", id), {
-        postId,
-        userId: user.uid,
-        createdAt: serverTimestamp(),
-      });
+    try {
+      if (liked) {
+        await deleteDoc(doc(db, "likes", id));
+      } else {
+        await setDoc(doc(db, "likes", id), {
+          postId,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch {
+      setNotice("Like could not be updated. Check your connection and try again.");
     }
   };
 
@@ -1699,18 +1732,22 @@ export default function App() {
       return;
     }
     const id = `${postId}_${user.uid}`;
-    if (bookmarkedPostIds.has(postId)) {
-      await deleteDoc(doc(db, "bookmarks", id));
-      setNotice("Removed from bookmarks.");
-    } else {
-      await setDoc(doc(db, "bookmarks", id), {
-        postId,
-        userId: user.uid,
-        createdAt: serverTimestamp(),
-      });
-      setNotice("Story bookmarked.");
+    try {
+      if (bookmarkedPostIds.has(postId)) {
+        await deleteDoc(doc(db, "bookmarks", id));
+        setNotice("Removed from bookmarks.");
+      } else {
+        await setDoc(doc(db, "bookmarks", id), {
+          postId,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        });
+        setNotice("Story bookmarked.");
+      }
+      window.setTimeout(() => setNotice(""), 2400);
+    } catch {
+      setNotice("Bookmark could not be updated. Please try again.");
     }
-    window.setTimeout(() => setNotice(""), 2400);
   };
 
   const addComment = async (event, postId) => {
@@ -1738,7 +1775,12 @@ export default function App() {
 
   const deleteComment = async (comment) => {
     if (!user || !db || comment.authorId !== user.uid) return;
-    await deleteDoc(doc(db, "comments", comment.id));
+    try {
+      await deleteDoc(doc(db, "comments", comment.id));
+      setNotice("Comment deleted.");
+    } catch {
+      setNotice("Comment could not be deleted. Please try again.");
+    }
   };
 
   const shareStory = async (post) => {
@@ -2014,15 +2056,57 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
     if (!user || !db) return;
     const outgoingMatch = outgoing.find((item) => item.to === person.uid);
     const incomingMatch = incoming.find((item) => item.from === person.uid);
-    if (outgoingMatch) await deleteDoc(doc(db, "follows", outgoingMatch.id));
-    if (incomingMatch) await deleteDoc(doc(db, "follows", incomingMatch.id));
-    if (activeChat?.uid === person.uid) setActiveChat(null);
+    try {
+      if (outgoingMatch) await deleteDoc(doc(db, "follows", outgoingMatch.id));
+      if (incomingMatch) await deleteDoc(doc(db, "follows", incomingMatch.id));
+      if (activeChat?.uid === person.uid) setActiveChat(null);
+      setNotice(`${person.displayName || "Connection"} removed.`);
+    } catch {
+      setNotice("Connection could not be removed. Please try again.");
+    }
   };
 
   const sendMessage = async (event) => {
     event.preventDefault();
     const text = cleanText(message, 1000);
     if (!text || !user || !activeChat) return;
+    if (editingMessage) {
+      if (
+        editingMessage.senderId !== user.uid ||
+        editingMessage.messageType !== "text"
+      ) {
+        setNotice("Only your own text messages can be edited.");
+        return;
+      }
+      setMessageActionBusy(editingMessage.id);
+      try {
+        if (callPreviewMode) {
+          const updateMessage = (item) =>
+            item.id === editingMessage.id
+              ? {
+                  ...item,
+                  text,
+                  editedAt: { toMillis: () => Date.now() },
+                }
+              : item;
+          setMessages((current) => current.map(updateMessage));
+          setAllMessages((current) => current.map(updateMessage));
+        } else if (db) {
+          await updateDoc(doc(db, "messages", editingMessage.id), {
+            text,
+            editedAt: serverTimestamp(),
+          });
+        }
+        setEditingMessage(null);
+        setMessage("");
+        setNotice("Message updated.");
+      } catch {
+        setNotice("Message could not be edited. Please try again.");
+      } finally {
+        setMessageActionBusy("");
+      }
+      return;
+    }
     if (callPreviewMode) {
       const preview = {
         id: `preview-message-${Date.now()}`,
@@ -2052,6 +2136,83 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
       setMessage("");
     } catch {
       setNotice("Message could not be sent. Check the connection and try again.");
+    }
+  };
+
+  const beginMessageEdit = (item) => {
+    if (!user || item.senderId !== user.uid || item.messageType !== "text") return;
+    setEditingMessage(item);
+    setMessage(item.text || "");
+    setAttachmentOpen(false);
+  };
+
+  const cancelMessageEdit = () => {
+    setEditingMessage(null);
+    setMessage("");
+  };
+
+  const deleteMessage = async (item) => {
+    if (!user || item.senderId !== user.uid || messageActionBusy) return;
+    setMessageActionBusy(item.id);
+    const payload = Object.fromEntries(
+      Object.entries(item).filter(
+        ([key, value]) => key !== "id" && value !== undefined && value !== null,
+      ),
+    );
+    try {
+      if (callPreviewMode) {
+        setMessages((current) => current.filter((messageItem) => messageItem.id !== item.id));
+        setAllMessages((current) => current.filter((messageItem) => messageItem.id !== item.id));
+      } else if (db) {
+        await deleteDoc(doc(db, "messages", item.id));
+      }
+      if (editingMessage?.id === item.id) cancelMessageEdit();
+      if (undoMessageTimerRef.current) {
+        window.clearTimeout(undoMessageTimerRef.current);
+      }
+      setDeletedMessage({ id: item.id, payload });
+      undoMessageTimerRef.current = window.setTimeout(() => {
+        setDeletedMessage(null);
+        undoMessageTimerRef.current = null;
+      }, 7000);
+    } catch {
+      setNotice("Message could not be deleted. Please try again.");
+    } finally {
+      setMessageActionBusy("");
+    }
+  };
+
+  const undoDeleteMessage = async () => {
+    if (!deletedMessage || !user || messageActionBusy) return;
+    const restored = { id: deletedMessage.id, ...deletedMessage.payload };
+    setMessageActionBusy(deletedMessage.id);
+    try {
+      if (callPreviewMode) {
+        setMessages((current) =>
+          [...current, restored].sort(
+            (a, b) => timeValue(a.createdAt) - timeValue(b.createdAt),
+          ),
+        );
+        setAllMessages((current) => [...current, restored]);
+      } else if (db) {
+        const restorePayload = {
+          ...deletedMessage.payload,
+          createdAt: deletedMessage.payload.createdAt?.toMillis
+            ? deletedMessage.payload.createdAt
+            : serverTimestamp(),
+        };
+        await setDoc(doc(db, "messages", deletedMessage.id), restorePayload);
+      }
+      if (undoMessageTimerRef.current) {
+        window.clearTimeout(undoMessageTimerRef.current);
+        undoMessageTimerRef.current = null;
+      }
+      setDeletedMessage(null);
+      setNotice("Message restored.");
+    } catch {
+      setNotice("Message could not be restored. The undo window may have expired.");
+    } finally {
+      setMessageActionBusy("");
     }
   };
 
@@ -2319,11 +2480,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 <h2>Notifications</h2>
               </div>
               <button
-                className="modalClose"
+                className="modalClose modalBack"
+                type="button"
                 onClick={() => setNotificationsOpen(false)}
-                aria-label="Close notifications"
+                aria-label="Back from notifications"
               >
-                ×
+                <ArrowLeft size={14} /> <span>Back</span>
               </button>
             </header>
             <div className="notificationTools" aria-label="Notification controls">
@@ -2860,8 +3022,13 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
       {composerOpen && (
         <div className="modalBackdrop">
           <section className="composer" role="dialog" aria-modal="true">
-            <button className="modalClose" onClick={() => setComposerOpen(false)}>
-              ×
+            <button
+              className="modalClose modalBack"
+              type="button"
+              onClick={() => setComposerOpen(false)}
+              aria-label="Back from story editor"
+            >
+              <ArrowLeft size={14} /> <span>Back</span>
             </button>
             <p className="eyebrow">NEW STORY</p>
             <h2>Share an idea.</h2>
@@ -3050,11 +3217,12 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             aria-labelledby="profile-title"
           >
             <button
-              className="modalClose"
+              className="modalClose modalBack"
+              type="button"
               onClick={() => setProfileOpen(false)}
-              aria-label="Close profile editor"
+              aria-label="Back from profile editor"
             >
-              ×
+              <ArrowLeft size={14} /> <span>Back</span>
             </button>
             <p className="eyebrow">YOUR PROFILE</p>
             <h2 id="profile-title">Make it yours.</h2>
@@ -3230,12 +3398,13 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             aria-labelledby="delete-story-title"
           >
             <button
-              className="modalClose"
+              className="modalClose modalBack"
+              type="button"
               onClick={() => setPostToDelete(null)}
-              aria-label="Close"
+              aria-label="Back from delete story confirmation"
               disabled={postDeleting}
             >
-              ×
+              <ArrowLeft size={14} /> <span>Back</span>
             </button>
             <p className="eyebrow">DELETE STORY</p>
             <h2 id="delete-story-title">Remove this story?</h2>
@@ -3272,12 +3441,13 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             aria-labelledby="delete-account-title"
           >
             <button
-              className="modalClose"
+              className="modalClose modalBack"
+              type="button"
               onClick={() => setAccountDeleteOpen(false)}
-              aria-label="Close"
+              aria-label="Back from delete account confirmation"
               disabled={accountDeleting}
             >
-              ×
+              <ArrowLeft size={14} /> <span>Back</span>
             </button>
             <p className="eyebrow">DANGER ZONE</p>
             <h2 id="delete-account-title">Delete your account?</h2>
@@ -3331,13 +3501,15 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             aria-modal="true"
           >
             <button
-              className="modalClose"
+              className="modalClose modalBack"
+              type="button"
               onClick={() => {
                 setSocialOpen(false);
                 setActiveChat(null);
               }}
+              aria-label="Back from community panel"
             >
-              ×
+              <ArrowLeft size={14} /> <span>Back</span>
             </button>
             <div className="socialSidebar">
               <p className="eyebrow">YOUR COMMUNITY</p>
@@ -3444,7 +3616,8 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                         {status === "connected" ? (
                           <button
                             className="personAction connected"
-                            onClick={() => setActiveChat(person)}
+                            type="button"
+                            onClick={() => openConversation(person)}
                           >
                             <MessageCircle size={13} /> Chat
                           </button>
@@ -3546,59 +3719,51 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                         const isMine = item.senderId === user.uid;
                         const callType =
                           item.messageType === "audio_call" ? "audio" : "video";
+                        let messageContent;
                         if (isCall) {
-                          return (
-                          <article
-                            className={`callInvitation ${isMine ? "mine" : ""}`}
-                            key={item.id}
-                          >
-                            <div className="callInvitationIcon" aria-hidden="true">
-                              {callType === "audio" ? "☎" : "◉"}
-                            </div>
-                            <div>
-                              <small>
-                                {isMine
-                                  ? "YOU STARTED A CALL"
-                                  : `${callType.toUpperCase()} CALL INVITATION`}
-                              </small>
-                              <strong>
-                                {isMine
-                                  ? `Waiting for ${activeChat.displayName}`
-                                  : `${activeChat.displayName} invited you`}
-                              </strong>
-                              <p>
-                                {callType === "audio"
-                                  ? "Your camera starts off. Microphone permission is requested when you join."
-                                  : "Camera and microphone permissions are requested after you join."}
-                              </p>
-                              <a
-                                href={callURL(item.callRoom, callType)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                Join {callType} call ↗
-                              </a>
-                            </div>
-                          </article>
+                          messageContent = (
+                            <article className={`callInvitation ${isMine ? "mine" : ""}`}>
+                              <div className="callInvitationIcon" aria-hidden="true">
+                                {callType === "audio" ? "☎" : "◉"}
+                              </div>
+                              <div>
+                                <small>
+                                  {isMine
+                                    ? "YOU STARTED A CALL"
+                                    : `${callType.toUpperCase()} CALL INVITATION`}
+                                </small>
+                                <strong>
+                                  {isMine
+                                    ? `Waiting for ${activeChat.displayName}`
+                                    : `${activeChat.displayName} invited you`}
+                                </strong>
+                                <p>
+                                  {callType === "audio"
+                                    ? "Your camera starts off. Microphone permission is requested when you join."
+                                    : "Camera and microphone permissions are requested after you join."}
+                                </p>
+                                <a
+                                  href={callURL(item.callRoom, callType)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  Join {callType} call ↗
+                                </a>
+                              </div>
+                            </article>
                           );
-                        }
-                        if (item.messageType === "photo" && item.mediaURL) {
-                          return (
-                            <article
-                              className={`chatMediaCard ${isMine ? "mine" : ""}`}
-                              key={item.id}
-                            >
+                        } else if (item.messageType === "photo" && item.mediaURL) {
+                          messageContent = (
+                            <article className={`chatMediaCard ${isMine ? "mine" : ""}`}>
                               <img src={item.mediaURL} alt="Shared in chat" />
                               <span>Shared photo</span>
                             </article>
                           );
-                        }
-                        if (item.messageType === "video" && item.mediaURL) {
+                        } else if (item.messageType === "video" && item.mediaURL) {
                           const details = getVideoDetails(item.mediaURL);
-                          return (
+                          messageContent = (
                             <article
                               className={`chatMediaCard chatVideoCard ${isMine ? "mine" : ""}`}
-                              key={item.id}
                             >
                               {details ? (
                                 <StoryVideo details={details} title="Shared video" />
@@ -3610,28 +3775,55 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                               <span>Shared video</span>
                             </article>
                           );
-                        }
-                        if (item.messageType === "link" && item.mediaURL) {
-                          return (
+                        } else if (item.messageType === "link" && item.mediaURL) {
+                          messageContent = (
                             <a
                               className={`chatLinkCard ${isMine ? "mine" : ""}`}
                               href={item.mediaURL}
                               target="_blank"
                               rel="noopener noreferrer"
-                              key={item.id}
                             >
                               <small>SHARED LINK</small>
                               <strong>{linkHost(item.mediaURL)}</strong>
                               <span>{item.mediaURL}</span>
                             </a>
                           );
+                        } else {
+                          messageContent = (
+                            <div className={`messageBubble ${isMine ? "mine" : ""}`}>
+                              <span>{item.text}</span>
+                              {item.editedAt && <small className="messageEdited">edited</small>}
+                            </div>
+                          );
                         }
+
                         return (
-                          <div
-                            className={`messageBubble ${isMine ? "mine" : ""}`}
-                            key={item.id}
-                          >
-                            {item.text}
+                          <div className={`chatMessageRow ${isMine ? "mine" : ""}`} key={item.id}>
+                            {messageContent}
+                            {isMine && (
+                              <div className="messageActions" aria-label="Message actions">
+                                {item.messageType === "text" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => beginMessageEdit(item)}
+                                    disabled={messageActionBusy === item.id}
+                                    aria-label="Edit message"
+                                    title="Edit message"
+                                  >
+                                    <Pencil size={13} /> <span>Edit</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => deleteMessage(item)}
+                                  disabled={messageActionBusy === item.id}
+                                  aria-label="Delete message"
+                                  title="Delete message"
+                                >
+                                  <Trash2 size={13} /> <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })
@@ -3710,11 +3902,24 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                       </div>
                     </form>
                   )}
+                  {editingMessage && (
+                    <div className="messageEditBanner" role="status">
+                      <Pencil size={14} />
+                      <span>
+                        <strong>Editing message</strong>
+                        <small>Update the text, then tap Save.</small>
+                      </span>
+                      <button type="button" onClick={cancelMessageEdit}>
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                   <form className="messageForm" onSubmit={sendMessage}>
                     <button
                       className="attachmentToggle"
                       type="button"
                       onClick={() => setAttachmentOpen((current) => !current)}
+                      disabled={Boolean(editingMessage)}
                       aria-label="Share link, photo or video"
                       title="Share link, photo or video"
                     >
@@ -3724,10 +3929,13 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                       value={message}
                       onChange={(event) => setMessage(event.target.value)}
                       maxLength={1000}
-                      placeholder="Write a message…"
+                      placeholder={editingMessage ? "Edit your message…" : "Write a message…"}
                     />
-                    <button className="messageSendButton">
-                      Send <Send size={15} />
+                    <button
+                      className="messageSendButton"
+                      disabled={!cleanText(message, 1000) || Boolean(messageActionBusy)}
+                    >
+                      {editingMessage ? "Save" : "Send"} <Send size={15} />
                     </button>
                   </form>
                 </>
@@ -3748,7 +3956,16 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                   </header>
 
                   <nav className="chatInboxTabs" aria-label="Message folders">
-                    <button className="active" type="button">All</button>
+                    <button
+                      className="active"
+                      type="button"
+                      onClick={() => {
+                        setChatSearch("");
+                        setActiveChat(null);
+                      }}
+                    >
+                      All
+                    </button>
                     <button type="button" onClick={() => setSocialTarget("requests")}>
                       Requests
                       {incomingRequests.length > 0 && <b>{incomingRequests.length}</b>}
@@ -3775,7 +3992,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                           className="chatThread"
                           type="button"
                           key={person.uid}
-                          onClick={() => setActiveChat(person)}
+                          onClick={() => openConversation(person)}
                         >
                           <ProfileAvatar person={person} tone="sky" />
                           <span className="chatThreadCopy">
@@ -3815,6 +4032,28 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
           </section>
         </div>
       )}
+
+      <AnimatePresence>
+        {deletedMessage && (
+          <m.div
+            className="messageUndoBar"
+            role="status"
+            aria-live="polite"
+            initial={reduceMotion ? false : { opacity: 0, y: 12, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: 10, x: "-50%" }}
+          >
+            <span>Message deleted</span>
+            <button
+              type="button"
+              onClick={undoDeleteMessage}
+              disabled={Boolean(messageActionBusy)}
+            >
+              <Undo2 size={14} /> Undo
+            </button>
+          </m.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {notice && (

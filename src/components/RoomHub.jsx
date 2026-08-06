@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { m } from "framer-motion";
 import {
+  ArrowLeft,
   CheckCircle2,
   Copy,
   Crown,
@@ -13,7 +14,6 @@ import {
   Sparkles,
   Trash2,
   UsersRound,
-  X,
 } from "lucide-react";
 import {
   collection,
@@ -598,8 +598,8 @@ export default function RoomHub({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         onClick={(event) => event.stopPropagation()}
       >
-        <button className="modalClose" type="button" onClick={onClose} aria-label="Close rooms">
-          <X size={20} />
+        <button className="modalClose modalBack" type="button" onClick={onClose} aria-label="Back from rooms">
+          <ArrowLeft size={15} /> <span>Back</span>
         </button>
 
         {!activeCode ? (

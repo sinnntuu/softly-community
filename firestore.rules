@@ -550,7 +550,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
           "chatId", "senderId", "receiverId", "participants",
-          "messageType", "text", "createdAt", "callRoom", "mediaURL"
+          "messageType", "text", "createdAt", "editedAt", "callRoom", "mediaURL"
         ])
         && request.resource.data.senderId == request.auth.uid
         && request.resource.data.receiverId != request.auth.uid
@@ -569,6 +569,10 @@ service cloud.firestore {
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 1000
         && request.resource.data.createdAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(["editedAt"])
+          || request.resource.data.editedAt is timestamp
+        )
         && (
           (
             request.resource.data.messageType == "text"
@@ -603,9 +607,18 @@ service cloud.firestore {
           request.resource.data.senderId,
           request.resource.data.receiverId
         );
+      allow update: if signedIn()
+        && resource.data.senderId == request.auth.uid
+        && resource.data.messageType == "text"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "text", "editedAt"
+        ])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 1000
+        && request.resource.data.editedAt is timestamp;
       allow delete: if signedIn()
-        && request.auth.uid in resource.data.participants;
-      allow update: if false;
+        && resource.data.senderId == request.auth.uid;
     }
   }
 }

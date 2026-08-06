@@ -1250,6 +1250,21 @@ footer button {
     -6px -6px 12px #ffffff;
 }
 
+.modalBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-width: 38px;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.modalBack svg { flex: 0 0 auto; }
+
 .composer form {
   display: grid;
   grid-template-columns: 1fr 180px;
@@ -2220,6 +2235,21 @@ footer button {
   padding: 26px;
 }
 
+.chatMessageRow {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 14px;
+}
+
+.chatMessageRow.mine { align-items: flex-end; }
+
+.chatMessageRow :is(.messageBubble, .callInvitation, .chatMediaCard, .chatLinkCard) {
+  margin-bottom: 0;
+}
+
 .messageBubble {
   width: fit-content;
   max-width: 76%;
@@ -2241,6 +2271,77 @@ footer button {
   background: #687766;
   color: white;
   box-shadow: 5px 5px 14px rgba(68, 75, 66, 0.28);
+}
+
+.messageBubble > span { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.messageEdited {
+  display: block;
+  margin-top: 5px;
+  color: currentColor;
+  font-size: 8px;
+  font-style: italic;
+  opacity: 0.7;
+  text-align: right;
+}
+
+.messageActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  opacity: 0.72;
+  transition: opacity 160ms ease;
+}
+
+.chatMessageRow:hover .messageActions,
+.chatMessageRow:focus-within .messageActions { opacity: 1; }
+
+.messageActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: var(--paper);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+  box-shadow: 3px 3px 8px var(--shadow-dark), -3px -3px 8px var(--shadow-light);
+}
+
+.messageActions button:hover { color: var(--accent); transform: translateY(-1px); }
+.messageActions button:disabled { cursor: wait; opacity: 0.45; }
+
+.messageEditBanner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 16px 16px 0 0;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--paper));
+  color: var(--accent);
+}
+
+.messageEditBanner > span { min-width: 0; }
+.messageEditBanner strong,
+.messageEditBanner small { display: block; }
+.messageEditBanner strong { font-size: 9px; }
+.messageEditBanner small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.messageEditBanner button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 750;
 }
 
 .callInvitation {
@@ -2869,7 +2970,16 @@ footer button {
 .storyCard,
 .storyBody { min-width: 0; }
 .storyBody { overflow: hidden; }
-.storyActions { display: flex; align-items: center; gap: 7px; max-width: 100%; margin-left: auto; }
+.communityCard .byline { flex-wrap: wrap; }
+.storyActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  flex: 0 0 calc(100% - 49px);
+  max-width: calc(100% - 49px);
+  margin: 10px 0 0 49px;
+}
 .storyActions .likeButton { margin-left: 0; }
 .commentButton { width: auto; min-width: 40px; border-radius: 999px; padding-inline: 9px; color: var(--accent); font-size: 10px; }
 .bookmarkButton, .shareStoryButton, .downloadStoryButton { width: 36px; }
@@ -3090,8 +3200,11 @@ footer button {
   .videoCallButton { order: initial; margin-left: 0; }
   .removeConnection { order: 2; }
   .messageList { padding: 14px; }
+  .messageBubble { max-width: 86%; }
+  .callInvitation { width: min(360px, 92%); }
   .chatMediaCard, .chatLinkCard { width: 90%; }
   .chatSharePanel { margin-inline: 10px; }
+  .messageEditBanner { margin-inline: 12px; }
   .messageForm { gap: 7px; padding: 12px; }
   .messageForm .attachmentToggle { width: 40px; }
   .messageForm .messageSendButton { padding-inline: 13px; }
@@ -3269,7 +3382,13 @@ footer button {
     max-width: 100%;
     gap: 6px;
     margin-left: 0;
+    margin-top: 5px;
     overflow: visible;
+  }
+  .communityCard .storyActions {
+    flex-basis: 100%;
+    max-width: 100%;
+    margin-left: 0;
   }
   .storyActions > button,
   .storyActions .commentButton,
@@ -3304,6 +3423,27 @@ footer button {
   .chatThreadCopy strong { font-size: 15px; }
   .chatThreadCopy small { font-size: 11px; }
   .chatThreadMeta { font-size: 9px; }
+  .chatHeader { padding-right: 14px; }
+  .chatMessageRow { margin-bottom: 13px; }
+  .messageBubble { max-width: 90%; padding: 11px 13px; }
+  .messageActions { gap: 7px; opacity: 1; }
+  .messageActions button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+  .messageActions button span { display: none; }
+  .messageEditBanner { margin-inline: 10px; border-radius: 14px 14px 0 0; }
+  .messageForm { padding: 10px; }
+  .messageForm input { padding-inline: 13px; }
+  .messageForm .messageSendButton { min-width: 62px; padding-inline: 10px; }
+  .messageUndoBar {
+    width: calc(100% - 28px);
+    justify-content: space-between;
+    bottom: max(84px, calc(env(safe-area-inset-bottom) + 76px));
+  }
+  .modalBack { min-height: 40px; padding-inline: 11px; }
   .chatBackButton { width: 36px; min-width: 36px; padding: 0; }
   .chatBackButton span { display: none; }
   .skeletonLine.title { height: 52px; }
@@ -3361,7 +3501,8 @@ footer button {
   z-index: 8;
   top: 0;
   float: right;
-  width: 46px;
+  width: auto;
+  min-width: 46px;
   height: 46px;
   margin: -14px -14px 0 12px;
 }
@@ -3570,6 +3711,41 @@ footer button {
   color: #8c3028;
   font-size: 11px;
   font-weight: 700;
+}
+
+.messageForm button:disabled { cursor: not-allowed; opacity: 0.48; }
+
+.messageUndoBar {
+  position: fixed;
+  z-index: 180;
+  left: 50%;
+  bottom: max(94px, calc(env(safe-area-inset-bottom) + 82px));
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: calc(100% - 28px);
+  border-radius: 999px;
+  padding: 12px 14px 12px 17px;
+  background: var(--ink);
+  color: white;
+  box-shadow: 10px 10px 26px rgba(30, 34, 29, 0.32);
+  transform: translateX(-50%);
+}
+
+.messageUndoBar span { font-size: 10px; font-weight: 700; white-space: nowrap; }
+.messageUndoBar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .roomLoading,
