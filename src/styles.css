@@ -397,7 +397,12 @@ a {
 }
 
 .communityArt {
-  height: 420px;
+  isolation: isolate;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1.24 / 1;
+  min-height: 360px;
+  max-height: 460px;
   position: relative;
   overflow: hidden;
   border-radius: 42% 58% 40% 60% / 58% 42% 58% 42%;
@@ -405,10 +410,20 @@ a {
   box-shadow:
     18px 18px 36px #bebdb6,
     -18px -18px 36px #ffffff;
+  transform: translateZ(0);
+  transition: border-radius 420ms ease, transform 420ms ease, box-shadow 420ms ease;
+  will-change: transform;
+}
+
+.communityArt:hover {
+  transform: translateY(-5px) rotate(.25deg);
+  border-radius: 48% 52% 45% 55% / 53% 47% 55% 45%;
 }
 
 .communityArt .arch {
   bottom: -35px;
+  animation: softlyArchBreathe 7s ease-in-out infinite alternate;
+  transform-origin: 50% 100%;
 }
 
 .communityArt .archOne {
@@ -417,10 +432,17 @@ a {
 
 .communityArt .archTwo {
   left: 170px;
+  animation-delay: -2.4s;
 }
 
 .floatingNote {
+  z-index: 4;
   position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100% - 32px);
+  min-height: 40px;
   padding: 13px 18px;
   border-radius: 999px;
   background: var(--paper);
@@ -431,21 +453,24 @@ a {
   box-shadow:
     8px 8px 16px rgba(110, 108, 102, 0.35),
     -8px -8px 16px rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  will-change: transform;
 }
 
 .noteOne {
-  left: 38px;
-  top: 48px;
-  transform: rotate(-7deg);
+  left: clamp(54px, 13%, 82px);
+  top: clamp(70px, 20%, 94px);
+  animation: softlyNoteOne 5.4s ease-in-out infinite;
 }
 
 .noteTwo {
-  right: 38px;
-  bottom: 46px;
-  transform: rotate(6deg);
+  right: clamp(42px, 10%, 70px);
+  bottom: clamp(64px, 17%, 92px);
+  animation: softlyNoteTwo 5.8s ease-in-out -1.7s infinite;
 }
 
 .floatingHeart {
+  z-index: 5;
   position: absolute;
   right: 42px;
   top: 70px;
@@ -460,6 +485,34 @@ a {
   box-shadow:
     8px 8px 16px rgba(110, 108, 102, 0.35),
     -8px -8px 16px rgba(255, 255, 255, 0.55);
+  animation: softlyHeartFloat 4.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+.communityArt .sun {
+  z-index: 1;
+  animation: softlySunPulse 6s ease-in-out infinite;
+}
+
+@keyframes softlyNoteOne {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-7deg); }
+  50% { transform: translate3d(7px, -8px, 0) rotate(-4deg); }
+}
+@keyframes softlyNoteTwo {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(6deg); }
+  50% { transform: translate3d(-6px, -7px, 0) rotate(3deg); }
+}
+@keyframes softlyHeartFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(0, -10px, 0) scale(1.04); }
+}
+@keyframes softlySunPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(231, 139, 110, .38); }
+  50% { transform: scale(1.045); box-shadow: 0 0 58px rgba(231, 139, 110, .56); }
+}
+@keyframes softlyArchBreathe {
+  from { transform: rotate(-10deg) scale(1); }
+  to { transform: rotate(-8deg) scale(1.035); }
 }
 
 .eyebrow,
@@ -3159,10 +3212,11 @@ footer button {
   left: 0;
   bottom: max(18px, env(safe-area-inset-bottom));
   display: grid;
-  grid-template-columns: repeat(5, minmax(62px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
   gap: 4px;
-  width: min(470px, calc(100% - 28px));
+  width: min(470px, calc(100vw - 28px));
+  max-width: calc(100vw - 18px);
   border: 1px solid color-mix(in srgb, var(--muted) 16%, transparent);
   border-radius: 22px;
   padding: 7px;
@@ -3170,6 +3224,7 @@ footer button {
   box-shadow: 12px 12px 30px rgba(43,46,41,.28), -7px -7px 22px rgba(255,255,255,.78);
   backdrop-filter: blur(18px);
   margin-inline: auto;
+  isolation: isolate;
 }
 .communityDock button {
   position: relative;
@@ -3186,12 +3241,23 @@ footer button {
   cursor: pointer;
   font-size: 8px;
   font-weight: 750;
+  transition: color 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 .communityDock button:hover,
 .communityDock button.active {
   background: var(--ink);
   color: white;
   transform: translateY(-1px);
+  box-shadow: 0 7px 14px color-mix(in srgb, var(--ink) 20%, transparent);
+}
+.communityDock button:active { transform: translateY(0) scale(.96); }
+.communityDock button span {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .communityDock button b {
   position: absolute;
@@ -3216,11 +3282,25 @@ footer button {
   .feedModes { align-self: stretch; justify-content: center; }
   .challengeOption { grid-template-columns: auto 1fr; }
   .challengeOptionActions { grid-column: 2; justify-items: start; }
+  .communityArt {
+    width: min(620px, 100%);
+    min-height: 340px;
+    justify-self: center;
+  }
 }
 
 @media (max-width: 640px) {
   .communityHero { min-height: 0; gap: 32px; padding-block: 24px 42px; }
-  .communityArt { height: 270px; }
+  .communityArt {
+    width: 100%;
+    height: 270px;
+    min-height: 270px;
+    aspect-ratio: 1.28 / 1;
+  }
+  .floatingNote { min-height: 34px; padding: 10px 13px; font-size: 8px; }
+  .noteOne { left: clamp(38px, 13%, 58px); top: clamp(50px, 19%, 68px); }
+  .noteTwo { right: clamp(28px, 9%, 46px); bottom: clamp(38px, 15%, 58px); }
+  .floatingHeart { top: 45px; right: 28px; width: 52px; height: 52px; font-size: 20px; }
   .stories { padding-block: 48px 65px; }
   .notificationPanel { top: 74px; right: 14px; width: calc(100% - 28px); max-height: calc(100vh - 88px); padding: 18px; }
   .notificationBell { width: 36px; height: 36px; }
@@ -3264,11 +3344,24 @@ footer button {
     width: calc(100% - 18px);
     border-radius: 18px;
     padding: 5px;
+    gap: 2px;
   }
-  .communityDock button { min-height: 46px; border-radius: 13px; }
+  .communityDock button { min-height: 46px; border-radius: 13px; padding-inline: 2px; }
   .communityDock button span { font-size: 7px; }
   .communityDock button b { top: 2px; right: 5px; }
   .toast { right: 14px; bottom: 86px; max-width: calc(100% - 28px); }
+}
+
+@media (max-width: 390px) {
+  .communityHero { gap: 26px; }
+  .communityArt { height: 238px; min-height: 238px; }
+  .floatingNote { min-height: 31px; padding: 8px 11px; font-size: 7px; }
+  .noteOne { left: 34px; top: 44px; }
+  .noteTwo { right: 23px; bottom: 32px; }
+  .floatingHeart { top: 36px; right: 21px; width: 46px; height: 46px; font-size: 18px; }
+  .communityDock { width: calc(100vw - 12px); max-width: calc(100vw - 12px); }
+  .communityDock button { min-height: 44px; }
+  .communityDock button span { font-size: 6.5px; letter-spacing: -.01em; }
 }
 
 /* Production experience: loading, achievements, responsive navigation and dark mode */
@@ -3358,7 +3451,7 @@ footer button {
   .skeletonHero { gap: 34px; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1020px) {
   .mobileMenuToggle { display: inline-grid; margin-left: auto; }
   .navLinks {
     position: absolute;
@@ -4584,7 +4677,7 @@ canvas { max-width: 100%; }
 [data-theme="skeuo"] .storyArt { border-bottom: 5px solid #9b8e77; }
 [data-theme="skeuo"] .communityArt { border: 7px solid #d0c5b1; box-shadow: 0 2px 0 #fff7e7 inset, 12px 15px 28px rgba(75,61,44,.25); }
 
-@media (max-width: 760px) {
+@media (max-width: 1020px) {
   .themeToggle.themePicker { width: 100%; justify-self: stretch; }
   .themePicker select { width: 100%; }
   .authGateTheme .themeToggle.themePicker { width: auto; min-width: 100px; }
