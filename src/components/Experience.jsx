@@ -1,10 +1,22 @@
 import { Component, useEffect, useState } from "react";
-import { ArrowLeft, Moon, RefreshCcw, Sun } from "lucide-react";
+import {
+  ArrowLeft,
+  Box,
+  Layers,
+  Monitor,
+  Moon,
+  Palette,
+  RefreshCcw,
+  Sun,
+} from "lucide-react";
 
 const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
 const readPreference = () => {
   try {
-    return localStorage.getItem("softly-color-mode") || "system";
+    const saved = localStorage.getItem("softly-color-mode") || "system";
+    return ["system", "light", "dark", "clay", "glass", "skeuo"].includes(saved)
+      ? saved
+      : "system";
   } catch {
     return "system";
   }
@@ -20,12 +32,22 @@ const resolveTheme = (preference) =>
 export function ThemeToggle() {
   const [preference, setPreference] = useState(readPreference);
   const resolved = resolveTheme(preference);
+  const modes = [
+    { value: "system", label: "System", icon: Monitor },
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "clay", label: "Clay", icon: Box },
+    { value: "glass", label: "Glass", icon: Layers },
+    { value: "skeuo", label: "Skeuo", icon: Palette },
+  ];
+  const activeMode = modes.find((mode) => mode.value === preference) || modes[0];
+  const ActiveIcon = activeMode.icon;
 
   useEffect(() => {
     const applyTheme = () => {
       const theme = resolveTheme(preference);
       document.documentElement.dataset.theme = theme;
-      document.documentElement.style.colorScheme = theme;
+      document.documentElement.style.colorScheme = theme === "dark" ? "dark" : "light";
     };
     applyTheme();
     try {
@@ -37,19 +59,23 @@ export function ThemeToggle() {
     return () => colorScheme.removeEventListener("change", applyTheme);
   }, [preference]);
 
-  const toggle = () => setPreference(resolved === "dark" ? "light" : "dark");
-  const nextLabel = resolved === "dark" ? "Switch to light mode" : "Switch to dark mode";
-
   return (
-    <button
-      type="button"
-      className="themeToggle"
-      onClick={toggle}
-      aria-label={nextLabel}
-      title={`${nextLabel}${preference === "system" ? " · following your device" : ""}`}
+    <label
+      className="themeToggle themePicker"
+      title={`Appearance: ${activeMode.label}${preference === "system" ? ` (${resolved})` : ""}`}
     >
-      {resolved === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-    </button>
+      <ActiveIcon size={16} aria-hidden="true" />
+      <span className="srOnly">Choose appearance</span>
+      <select
+        value={preference}
+        onChange={(event) => setPreference(event.target.value)}
+        aria-label="Choose appearance mode"
+      >
+        {modes.map((mode) => (
+          <option key={mode.value} value={mode.value}>{mode.label}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 

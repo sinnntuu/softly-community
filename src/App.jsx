@@ -385,6 +385,9 @@ function AuthGate({
 
   return (
     <main className="authGate" id="main-content">
+      <div className="authGateTheme" aria-label="Appearance settings">
+        <ThemeToggle />
+      </div>
       <section className="authWelcome" aria-labelledby="auth-welcome-title">
         <a className="authBrand" href="/" aria-label="Softly home">
           softly<span>.</span>

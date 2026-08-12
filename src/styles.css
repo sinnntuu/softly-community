@@ -4398,3 +4398,210 @@ footer button {
   .authCard { border-radius: 25px; padding: 25px 19px; }
   .authCard h2 { font-size: 36px; }
 }
+
+/* Multi-style appearance system */
+html,
+body,
+#root { width: 100%; max-width: 100%; min-width: 0; overflow-x: clip; }
+img,
+video,
+iframe,
+canvas { max-width: 100%; }
+:where(.nav, .navLinks, .account, .storyGrid, .storyCard, .storyBody, .sectionHead,
+  .discoveryControls, .socialPanel, .socialSidebar, .chatArea, .composer, .roomHub,
+  .roomOpenLayout, .roomRanking article, .siteFooter, .footerGrid) { min-width: 0; }
+:where(input, textarea, select, button) { max-width: 100%; }
+
+.themeToggle.themePicker {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  min-width: 102px;
+  height: 42px;
+  border-radius: 999px;
+  padding: 0 10px 0 12px;
+  cursor: default;
+}
+.themePicker > svg { color: var(--accent); pointer-events: none; }
+.themePicker select {
+  width: 66px;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 7px 16px 7px 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: 800 9px var(--sans);
+}
+.themePicker select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 8px; }
+.themePicker option { background: var(--paper); color: var(--ink); }
+.authGateTheme { position: fixed; z-index: 10; top: 22px; right: 24px; }
+
+:where(.storyCard, .peopleSection, .requestSection, .notificationPanel, .composer,
+  .socialPanel, .joinCard, .challengeOption, .siteFooter, .statusPage section,
+  .communityDock, .roomHub, .roomActionCard, .roomHistorySection, .roomRoster,
+  .roomEntryForm, .roomWinner, .roomRanking article, .roomParticipationHistory,
+  .roomHostBar, .authCard) {
+  transition: background-color 240ms ease, border-color 240ms ease, box-shadow 240ms ease, backdrop-filter 240ms ease;
+}
+
+[data-theme="clay"] {
+  --paper: #e7ded4;
+  --ink: #292b29;
+  --muted: #696b68;
+  --accent: #ad5544;
+  --accent-soft: rgba(173, 85, 68, .14);
+  --shadow-dark: #c5bcb3;
+  --shadow-light: #fff9f0;
+  --focus: #315de5;
+}
+[data-theme="clay"] body {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(244, 186, 163, .33), transparent 27%),
+    radial-gradient(circle at 92% 82%, rgba(153, 174, 151, .28), transparent 30%),
+    var(--paper);
+  background-attachment: fixed;
+}
+[data-theme="clay"] :is(.storyCard, .peopleSection, .requestSection, .notificationPanel,
+  .composer, .socialPanel, .joinCard, .challengeOption, .siteFooter,
+  .statusPage section, .communityDock, .roomHub, .roomActionCard,
+  .roomHistorySection, .roomRoster, .roomEntryForm, .roomWinner,
+  .roomRanking article, .roomParticipationHistory, .roomHostBar, .authCard) {
+  border: 1px solid rgba(255,255,255,.36);
+  border-radius: 30px;
+  background: #e7ded4;
+  box-shadow: 15px 15px 30px #c2b9b0, -13px -13px 28px #fff9ef;
+}
+[data-theme="clay"] :is(.primaryAction, .publishButton, .secondaryAction, .googleButton,
+  .authGoogle, .themePicker, .filters button, .feedModes, .storyActions button,
+  .chatInboxTabs button, .notificationTools button) {
+  border-radius: 17px;
+  box-shadow: 7px 7px 15px #c2b9b0, -6px -6px 14px #fff9ef;
+}
+[data-theme="clay"] :is(input, textarea, select) {
+  border-color: transparent;
+  background-color: #e7ded4;
+  box-shadow: inset 4px 4px 9px #c2b9b0, inset -4px -4px 9px #fff9ef;
+}
+[data-theme="clay"] :is(.communityArt, .storyArt) { border-radius: 34% 66% 58% 42% / 46% 38% 62% 54%; }
+
+[data-theme="glass"] {
+  --paper: #dce7e2;
+  --ink: #1d2926;
+  --muted: #536662;
+  --accent: #a34839;
+  --accent-soft: rgba(163, 72, 57, .13);
+  --shadow-dark: rgba(57, 78, 71, .2);
+  --shadow-light: rgba(255, 255, 255, .74);
+  --focus: #1b63e9;
+}
+[data-theme="glass"] body {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(255, 183, 154, .55), transparent 30%),
+    radial-gradient(circle at 88% 24%, rgba(123, 174, 169, .46), transparent 31%),
+    radial-gradient(circle at 52% 92%, rgba(236, 210, 150, .46), transparent 34%),
+    #dce7e2;
+  background-attachment: fixed;
+}
+[data-theme="glass"] :is(.storyCard, .peopleSection, .requestSection, .notificationPanel,
+  .composer, .socialPanel, .joinCard, .challengeOption, .siteFooter,
+  .statusPage section, .communityDock, .roomHub, .roomActionCard,
+  .roomHistorySection, .roomRoster, .roomEntryForm, .roomWinner,
+  .roomRanking article, .roomParticipationHistory, .roomHostBar, .authCard,
+  .navLinks.open) {
+  border: 1px solid rgba(255,255,255,.58);
+  background: rgba(244, 249, 246, .46);
+  box-shadow: 0 18px 50px rgba(46, 67, 60, .18), inset 0 1px 0 rgba(255,255,255,.64);
+  backdrop-filter: blur(22px) saturate(138%);
+  -webkit-backdrop-filter: blur(22px) saturate(138%);
+}
+[data-theme="glass"] :is(.storyBody, .chatArea, .socialSidebar, .authForm input,
+  .composer input, .composer textarea, .composer select, .messageForm input,
+  .commentSection input, .roomHub input, .roomHub textarea, .roomHub select) {
+  border-color: rgba(255,255,255,.52);
+  background: rgba(255,255,255,.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.56), 0 7px 18px rgba(63,82,76,.08);
+}
+[data-theme="glass"] :is(.primaryAction, .publishButton, .secondaryAction, .googleButton,
+  .authGoogle, .themePicker, .filters button, .feedModes) {
+  border: 1px solid rgba(255,255,255,.52);
+  background: rgba(255,255,255,.36);
+  box-shadow: 0 9px 24px rgba(55,75,68,.14), inset 0 1px 0 rgba(255,255,255,.6);
+  backdrop-filter: blur(15px);
+}
+[data-theme="glass"] :is(.primaryAction, .publishButton, .feedModes button.active) { background: rgba(31,42,38,.88); color: #fff; }
+[data-theme="glass"] :is(.modalBackdrop, .notificationBackdrop) { background: rgba(33, 45, 41, .42); backdrop-filter: blur(9px); }
+
+[data-theme="skeuo"] {
+  --paper: #ddd4c3;
+  --ink: #29251f;
+  --muted: #6b6257;
+  --accent: #944c35;
+  --accent-soft: rgba(148, 76, 53, .14);
+  --shadow-dark: #afa694;
+  --shadow-light: #fff7e7;
+  --focus: #174fc5;
+}
+[data-theme="skeuo"] body {
+  background:
+    repeating-linear-gradient(0deg, rgba(82,65,43,.025) 0 1px, transparent 1px 4px),
+    linear-gradient(135deg, #e5ddcc, #d5c9b6 70%, #e8dfce);
+  background-attachment: fixed;
+}
+[data-theme="skeuo"] :is(.storyCard, .peopleSection, .requestSection, .notificationPanel,
+  .composer, .socialPanel, .joinCard, .challengeOption, .siteFooter,
+  .statusPage section, .communityDock, .roomHub, .roomActionCard,
+  .roomHistorySection, .roomRoster, .roomEntryForm, .roomWinner,
+  .roomRanking article, .roomParticipationHistory, .roomHostBar, .authCard) {
+  border: 1px solid #b2a792;
+  background: linear-gradient(145deg, #e9e1d1, #d7cdbb);
+  box-shadow: 0 2px 0 #fff7e7 inset, 0 -2px 0 rgba(91,76,57,.12) inset, 9px 12px 24px rgba(75,61,44,.2);
+}
+[data-theme="skeuo"] :is(.primaryAction, .publishButton, .secondaryAction, .googleButton,
+  .authGoogle, .themePicker, .filters button, .feedModes, .storyActions button,
+  .chatInboxTabs button) {
+  border: 1px solid #a99e89;
+  background: linear-gradient(#eee7d9, #d2c7b4);
+  color: var(--ink);
+  box-shadow: 0 2px 1px rgba(255,255,255,.8) inset, 0 -2px 1px rgba(78,63,45,.12) inset, 3px 4px 8px rgba(69,55,39,.2);
+  text-shadow: 0 1px rgba(255,255,255,.58);
+}
+[data-theme="skeuo"] :is(.primaryAction, .publishButton, .feedModes button.active) {
+  border-color: #623c2e;
+  background: linear-gradient(#a45c43, #7f3d2b);
+  color: #fff8eb;
+  text-shadow: 0 -1px rgba(0,0,0,.3);
+}
+[data-theme="skeuo"] :is(input, textarea, select) {
+  border: 1px solid #a99e89;
+  background: #eee7d9;
+  box-shadow: inset 3px 4px 8px rgba(76,61,43,.2), inset -1px -1px 0 rgba(255,255,255,.75);
+}
+[data-theme="skeuo"] .storyArt { border-bottom: 5px solid #9b8e77; }
+[data-theme="skeuo"] .communityArt { border: 7px solid #d0c5b1; box-shadow: 0 2px 0 #fff7e7 inset, 12px 15px 28px rgba(75,61,44,.25); }
+
+@media (max-width: 760px) {
+  .themeToggle.themePicker { width: 100%; justify-self: stretch; }
+  .themePicker select { width: 100%; }
+  .authGateTheme .themeToggle.themePicker { width: auto; min-width: 100px; }
+  .navLinks { max-height: calc(100dvh - 92px); overflow-y: auto; overscroll-behavior: contain; }
+}
+@media (max-width: 480px) {
+  .authGateTheme { top: 14px; right: 14px; }
+  .authGateTheme .themePicker { min-width: 44px !important; width: 44px !important; padding: 0; grid-template-columns: 1fr; }
+  .authGateTheme .themePicker select { position: absolute; inset: 0; width: 100%; opacity: 0; }
+  .modalBackdrop { padding: 8px; }
+  .composer { width: 100%; max-height: calc(100dvh - 16px); border-radius: 22px; }
+  .navLinks { grid-template-columns: 1fr; }
+  .navLinks .themePicker, .navLinks .account, .navLinks .googleButton { grid-column: 1; }
+  .account { grid-template-columns: auto minmax(0, 1fr); }
+  .account .signOut { grid-column: 1 / -1; justify-self: stretch; justify-content: center; min-height: 42px; }
+  .storyActions { grid-template-columns: repeat(5, minmax(38px, 1fr)); }
+  .roomHub { padding-inline: 12px; }
+  .roomRanking article { overflow: hidden; }
+  .chatHeader { padding-right: 10px; }
+}
