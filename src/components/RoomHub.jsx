@@ -107,6 +107,9 @@ export default function RoomHub({
     title: "",
     thought: "",
     imageURL: "",
+    quote: "",
+    quotePosition: "center",
+    quoteTone: "light",
   });
   const [imagePreparing, setImagePreparing] = useState(false);
 
@@ -197,6 +200,9 @@ export default function RoomHub({
       title: ownSubmission.title || "",
       thought: ownSubmission.thought || "",
       imageURL: ownSubmission.imageURL || "",
+      quote: ownSubmission.quote || ownSubmission.title || "",
+      quotePosition: ownSubmission.quotePosition || "center",
+      quoteTone: ownSubmission.quoteTone || "light",
     });
   }, [ownSubmission?.id, ownSubmission?.updatedAt]);
 
@@ -287,7 +293,14 @@ export default function RoomHub({
     setActiveCode("");
     setRoom(null);
     setError("");
-    setEntryDraft({ title: "", thought: "", imageURL: "" });
+    setEntryDraft({
+      title: "",
+      thought: "",
+      imageURL: "",
+      quote: "",
+      quotePosition: "center",
+      quoteTone: "light",
+    });
     setEntryTheme("Student Innovation");
     try {
       localStorage.removeItem(storageKey);
@@ -427,12 +440,17 @@ export default function RoomHub({
     event.preventDefault();
     const title = cleanText(entryDraft.title, 100);
     const thought = cleanText(entryDraft.thought, 3000);
+    const quote = cleanText(entryDraft.quote, 180);
     if (title.length < 5) {
       setError("Add a title of at least 5 characters.");
       return;
     }
     if (thought.length < 80) {
       setError("Share at least 80 characters so the analysis has enough context.");
+      return;
+    }
+    if (quote.length < 5) {
+      setError("Write a short quote of at least 5 characters for the picture.");
       return;
     }
     if (!entryDraft.imageURL) {
@@ -470,6 +488,9 @@ export default function RoomHub({
         title,
         thought,
         imageURL: entryDraft.imageURL,
+        quote,
+        quotePosition: entryDraft.quotePosition,
+        quoteTone: entryDraft.quoteTone,
         theme: entryTheme,
         score: analysis.stars,
         feedback: analysis.feedback,
@@ -564,7 +585,10 @@ export default function RoomHub({
         (entry, index) => `
           <article class="entry ${index === 0 ? "winner" : ""}">
             <div class="rank">${index + 1}</div>
-            <img src="${entry.imageURL}" alt="Picture shared by ${escapeHTML(entry.displayName)}">
+            <figure class="poster ${escapeHTML(entry.quotePosition || "center")} ${escapeHTML(entry.quoteTone || "light")}">
+              <img src="${entry.imageURL}" alt="Picture shared by ${escapeHTML(entry.displayName)}">
+              <blockquote>“${escapeHTML(entry.quote || entry.title)}”</blockquote>
+            </figure>
             <div class="copy">
               <small>${escapeHTML(entry.theme || room.theme || "Student Innovation")}</small>
               <h2>${escapeHTML(entry.title)}</h2>
@@ -575,7 +599,7 @@ export default function RoomHub({
           </article>`,
       )
       .join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHTML(room.title)} results</title><style>body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.page{max-width:900px;margin:auto;padding:42px 20px}.brand{font:700 28px Georgia,serif}.brand i,.eyebrow{color:#a54836}.eyebrow{margin-top:42px;font-size:11px;font-weight:800;letter-spacing:.16em}h1{margin:12px 0;font:500 48px/1 Georgia,serif}.summary{color:#575c56}.entry{display:grid;grid-template-columns:48px 220px 1fr;gap:20px;margin-top:24px;padding:20px;border-radius:24px;background:#e9e7df;box-shadow:10px 10px 24px #c1c0b8,-10px -10px 24px #fff}.entry.winner{outline:2px solid #a54836}.rank{font:700 28px Georgia,serif;color:#a54836}.entry img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:18px}.entry h2{margin:7px 0;font:600 25px Georgia,serif}.entry small{color:#a54836;font-weight:700}.entry p{color:#575c56;line-height:1.6}.entry .author{color:#20241f;font-weight:700}.entry strong{color:#a54836;font-size:12px}.footer{margin-top:40px;color:#575c56;font-size:11px}@media(max-width:650px){h1{font-size:38px}.entry{grid-template-columns:34px 1fr}.entry img{grid-column:2}.copy{grid-column:2}}</style></head><body><main class="page"><div class="brand">softly<i>.</i></div><p class="eyebrow">ROOM ${escapeHTML(activeCode)} · FINAL RESULTS</p><h1>${escapeHTML(room.title)}</h1><p class="summary">${ranking.length} participants · Winner: <strong>${escapeHTML(ranking[0].displayName)}</strong> · Meaningfulness-based analysis</p>${cards}<p class="footer">Downloaded from Softly Community · Founder SINTU KUMAR RAI</p></main></body></html>`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHTML(room.title)} results</title><style>body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.page{max-width:900px;margin:auto;padding:42px 20px}.brand{font:700 28px Georgia,serif}.brand i,.eyebrow{color:#a54836}.eyebrow{margin-top:42px;font-size:11px;font-weight:800;letter-spacing:.16em}h1{margin:12px 0;font:500 48px/1 Georgia,serif}.summary{color:#575c56}.entry{display:grid;grid-template-columns:48px 260px 1fr;gap:20px;margin-top:24px;padding:20px;border-radius:24px;background:#e9e7df;box-shadow:10px 10px 24px #c1c0b8,-10px -10px 24px #fff}.entry.winner{outline:2px solid #a54836}.rank{font:700 28px Georgia,serif;color:#a54836}.poster{position:relative;display:flex;overflow:hidden;min-height:180px;max-height:380px;margin:0;border-radius:18px;background:#20241f}.poster img{display:block;width:100%;height:auto;object-fit:contain}.poster blockquote{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;padding:24px;color:#fff;font:700 22px/1.25 Georgia,serif;text-align:center;text-shadow:0 2px 12px #000}.poster.top blockquote{align-items:flex-start}.poster.bottom blockquote{align-items:flex-end}.poster.dark blockquote{color:#20241f;text-shadow:0 1px 8px #fff;background:linear-gradient(90deg,rgba(255,255,255,.28),rgba(255,255,255,.08))}.entry h2{margin:7px 0;font:600 25px Georgia,serif}.entry small{color:#a54836;font-weight:700}.entry p{color:#575c56;line-height:1.6}.entry .author{color:#20241f;font-weight:700}.entry strong{color:#a54836;font-size:12px}.footer{margin-top:40px;color:#575c56;font-size:11px}@media(max-width:650px){h1{font-size:38px}.entry{grid-template-columns:34px 1fr}.poster,.copy{grid-column:2}.poster blockquote{font-size:18px}}</style></head><body><main class="page"><div class="brand">softly<i>.</i></div><p class="eyebrow">ROOM ${escapeHTML(activeCode)} · LEADERBOARD</p><h1>${escapeHTML(room.title)}</h1><p class="summary">${ranking.length} participants · Winner: <strong>${escapeHTML(ranking[0].displayName)}</strong> · Meaningfulness-based analysis</p>${cards}<p class="footer">Downloaded from Softly Community · Founder SINTU KUMAR RAI</p></main></body></html>`;
     const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -848,10 +872,63 @@ export default function RoomHub({
                     />
                     <small>{entryDraft.thought.length}/3000 · minimum 80 characters</small>
                   </label>
+                  <label>
+                    Quote on picture
+                    <textarea
+                      className="roomQuoteInput"
+                      value={entryDraft.quote}
+                      onChange={(event) =>
+                        setEntryDraft((current) => ({ ...current, quote: event.target.value }))
+                      }
+                      minLength={5}
+                      maxLength={180}
+                      placeholder="Write the one line people should remember…"
+                      required
+                    />
+                    <small>{entryDraft.quote.length}/180 · this appears over your full picture</small>
+                  </label>
+                  <div className="roomQuoteControls" aria-label="Quote appearance">
+                    <label>
+                      Quote position
+                      <select
+                        value={entryDraft.quotePosition}
+                        onChange={(event) =>
+                          setEntryDraft((current) => ({
+                            ...current,
+                            quotePosition: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="top">Top</option>
+                        <option value="center">Center</option>
+                        <option value="bottom">Bottom</option>
+                      </select>
+                    </label>
+                    <label>
+                      Text contrast
+                      <select
+                        value={entryDraft.quoteTone}
+                        onChange={(event) =>
+                          setEntryDraft((current) => ({
+                            ...current,
+                            quoteTone: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="light">Light text</option>
+                        <option value="dark">Dark text</option>
+                      </select>
+                    </label>
+                  </div>
                   <div className="roomPictureField">
                     {entryDraft.imageURL ? (
-                      <div className="roomPicturePreview">
+                      <div
+                        className={`roomPicturePreview roomQuotePoster quote-${entryDraft.quotePosition} tone-${entryDraft.quoteTone}`}
+                      >
                         <img src={entryDraft.imageURL} alt="Your room entry preview" />
+                        <blockquote>
+                          {entryDraft.quote || "Your quote will appear here"}
+                        </blockquote>
                         <button
                           type="button"
                           onClick={() =>
@@ -883,15 +960,30 @@ export default function RoomHub({
                   <div>
                     <p className="eyebrow">ROOM WINNER</p>
                     <h3>{ranking[0]?.displayName}</h3>
-                    <p>{ranking[0]?.title}</p>
+                    <p>“{ranking[0]?.quote || ranking[0]?.title}”</p>
                   </div>
                   {ranking[0] && <ScorePill score={ranking[0].score} />}
                 </section>
-                <div className="roomRanking">
+                <header className="roomLeaderboardHead">
+                  <div>
+                    <p className="eyebrow">FINAL RANKING</p>
+                    <h3>Challenge leaderboard</h3>
+                  </div>
+                  <span>{ranking.length} ranked entries</span>
+                </header>
+                <div className="roomRanking" aria-label="Challenge leaderboard">
                   {ranking.map((entry, index) => (
                     <article key={entry.userId} className={index === 0 ? "winner" : ""}>
                       <span className="roomRank">{index + 1}</span>
-                      <img src={entry.imageURL} alt={`Picture shared by ${entry.displayName}`} loading="lazy" decoding="async" />
+                      <figure
+                        className={`roomRankingMedia roomQuotePoster quote-${entry.quotePosition || "center"} tone-${entry.quoteTone || "light"}`}
+                      >
+                        <img src={entry.imageURL} alt={`Picture shared by ${entry.displayName}`} loading="lazy" decoding="async" />
+                        <blockquote>“{entry.quote || entry.title}”</blockquote>
+                        <a href={entry.imageURL} target="_blank" rel="noopener noreferrer">
+                          View full image ↗
+                        </a>
+                      </figure>
                       <div>
                         <small>{entry.displayName} · {entry.theme || room.theme || "Student Innovation"}</small>
                         <h3>{entry.title}</h3>

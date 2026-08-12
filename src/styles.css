@@ -3911,6 +3911,62 @@ footer button {
 
 .roomEntryForm { display: grid; gap: 17px; }
 .roomEntryForm > div:first-child { display: grid; gap: 9px; }
+.roomQuoteInput { min-height: 92px !important; }
+.roomQuoteControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.roomQuotePoster {
+  position: relative;
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #20241f;
+  isolation: isolate;
+}
+.roomQuotePoster img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 520px;
+  object-fit: contain;
+}
+.roomQuotePoster::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,.34), transparent 32%, transparent 68%, rgba(0,0,0,.38));
+  pointer-events: none;
+}
+.roomQuotePoster.tone-dark::after {
+  background: linear-gradient(180deg, rgba(255,255,255,.46), rgba(255,255,255,.08) 38%, rgba(255,255,255,.12) 64%, rgba(255,255,255,.48));
+}
+.roomQuotePoster blockquote {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: clamp(20px, 5vw, 44px);
+  color: #fff;
+  font: 700 clamp(20px, 3vw, 34px)/1.22 var(--serif);
+  letter-spacing: -.02em;
+  text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 2px 14px rgba(0,0,0,.88);
+  pointer-events: none;
+}
+.roomQuotePoster.quote-top blockquote { align-items: flex-start; }
+.roomQuotePoster.quote-bottom blockquote { align-items: flex-end; }
+.roomQuotePoster.tone-dark blockquote {
+  color: #1e221e;
+  text-shadow: 0 1px 10px rgba(255,255,255,.92);
+}
 .roomPicturePicker {
   min-height: 150px;
   place-items: center;
@@ -3929,8 +3985,8 @@ footer button {
 .roomPicturePicker strong { font-size: 11px; }
 .roomPicturePicker span { color: var(--muted); font-size: 8px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .roomPicturePreview { position: relative; overflow: hidden; border-radius: 20px; }
-.roomPicturePreview img { width: 100%; max-height: 360px; object-fit: cover; }
-.roomPicturePreview button { position: absolute; right: 12px; bottom: 12px; border: 0; border-radius: 999px; padding: 10px 13px; background: rgba(20, 24, 20, .82); color: #fff; cursor: pointer; font-size: 9px; font-weight: 800; backdrop-filter: blur(9px); }
+.roomPicturePreview img { width: 100%; height: auto; max-height: 520px; object-fit: contain; }
+.roomPicturePreview button { position: absolute; z-index: 3; right: 12px; bottom: 12px; border: 0; border-radius: 999px; padding: 10px 13px; background: rgba(20, 24, 20, .82); color: #fff; cursor: pointer; font-size: 9px; font-weight: 800; backdrop-filter: blur(9px); }
 
 .roomHostBar {
   display: flex;
@@ -4027,7 +4083,25 @@ footer button {
 .roomRanking { display: grid; gap: 16px; margin-top: 20px; }
 .roomRanking article { position: relative; display: grid; grid-template-columns: 40px 190px 1fr auto; align-items: start; gap: 18px; border-radius: 23px; padding: 18px; }
 .roomRanking article.winner { border-color: color-mix(in srgb, var(--accent) 48%, transparent); }
-.roomRanking img { width: 100%; aspect-ratio: 1.2; border-radius: 17px; object-fit: cover; }
+.roomLeaderboardHead { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-top: 28px; }
+.roomLeaderboardHead h3 { margin: 5px 0 0; font: 600 28px/1.1 var(--serif); }
+.roomLeaderboardHead > span { color: var(--muted); font-size: 9px; }
+.roomRankingMedia { min-height: 150px; margin: 0; border-radius: 17px; }
+.roomRankingMedia img { width: 100%; height: auto; max-height: 320px; border-radius: 17px; object-fit: contain; }
+.roomRankingMedia blockquote { padding: 18px; font-size: clamp(15px, 1.6vw, 22px); }
+.roomRankingMedia a {
+  position: absolute;
+  z-index: 3;
+  right: 9px;
+  bottom: 9px;
+  border-radius: 999px;
+  padding: 7px 9px;
+  background: rgba(20,24,20,.76);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 800;
+  backdrop-filter: blur(8px);
+}
 .roomRank { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font: 700 15px var(--serif); }
 .roomRanking article > div { min-width: 0; }
 .roomRanking small { color: var(--accent); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
@@ -4096,6 +4170,9 @@ footer button {
   .roomProgress { grid-template-columns: 1fr; gap: 7px; }
   .roomRoster > div { grid-template-columns: 1fr; }
   .roomEntryForm, .roomRoster { padding: 17px; }
+  .roomQuoteControls { grid-template-columns: 1fr; }
+  .roomQuotePoster blockquote { padding: 18px; font-size: clamp(18px, 6vw, 28px); }
+  .roomLeaderboardHead { align-items: flex-start; flex-direction: column; gap: 6px; }
   .roomHostBar { align-items: stretch; flex-direction: column; }
   .roomAdminActions { align-items: stretch; flex-direction: column; }
   .roomAdminActions > button { width: 100%; }
