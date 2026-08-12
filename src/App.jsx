@@ -19,13 +19,20 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import {
+  createUserWithEmailAndPassword,
   deleteUser,
+  EmailAuthProvider,
   getRedirectResult,
   onAuthStateChanged,
   reauthenticateWithPopup,
+  reauthenticateWithCredential,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  updateProfile,
 } from "firebase/auth";
 import {
   auth,
@@ -59,7 +66,9 @@ import {
   Leaf,
   Lightbulb,
   Link2,
+  LockKeyhole,
   LogOut,
+  Mail,
   Menu,
   MessageCircle,
   MessageSquareText,
@@ -353,6 +362,183 @@ function ProfileAvatar({ person, tone = "sage", large = false }) {
   );
 }
 
+function AuthGate({
+  mode,
+  setMode,
+  form,
+  setForm,
+  busy,
+  error,
+  status,
+  onSubmit,
+  onForgot,
+  onGoogle,
+}) {
+  const isSignup = mode === "signup";
+  const isReset = mode === "reset";
+  const updateField = (field) => (event) =>
+    setForm((current) => ({ ...current, [field]: event.target.value }));
+  const changeMode = (nextMode) => {
+    setMode(nextMode);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  return (
+    <main className="authGate" id="main-content">
+      <section className="authWelcome" aria-labelledby="auth-welcome-title">
+        <a className="authBrand" href="/" aria-label="Softly home">
+          softly<span>.</span>
+        </a>
+        <p className="eyebrow">A JOURNAL WRITTEN TOGETHER</p>
+        <h1 id="auth-welcome-title">
+          Share ideas.<br />Build real <em>connections.</em>
+        </h1>
+        <p>
+          Publish thoughtful stories, join private challenges and stay connected
+          with your community.
+        </p>
+        <div className="authWelcomePoints" aria-label="Softly features">
+          <span><BookOpen size={16} /> Meaningful stories</span>
+          <span><UsersRound size={16} /> Private challenge rooms</span>
+          <span><MessageCircle size={16} /> Community conversations</span>
+        </div>
+      </section>
+
+      <section className="authCard" aria-labelledby="auth-form-title">
+        <div className="authCardIcon" aria-hidden="true">
+          {isReset ? <Mail size={22} /> : <LockKeyhole size={22} />}
+        </div>
+        <p className="eyebrow">
+          {isSignup ? "CREATE ACCOUNT" : isReset ? "RESET PASSWORD" : "WELCOME BACK"}
+        </p>
+        <h2 id="auth-form-title">
+          {isSignup ? "Join Softly." : isReset ? "Recover your account." : "Sign in to Softly."}
+        </h2>
+        <p className="authCardIntro">
+          {isSignup
+            ? "Choose a unique username that people can use to find you."
+            : isReset
+              ? "Enter your username or Gmail address. We’ll send a secure reset link to your inbox."
+              : "Use your username or Gmail address and password."}
+        </p>
+
+        <form className="authForm" onSubmit={isReset ? onForgot : onSubmit} noValidate>
+          {isSignup && (
+            <>
+              <label>
+                Full name
+                <input
+                  value={form.displayName}
+                  onChange={updateField("displayName")}
+                  autoComplete="name"
+                  minLength={2}
+                  maxLength={50}
+                  placeholder="Your name"
+                  required
+                />
+              </label>
+              <label>
+                Username
+                <div className="authInputPrefix">
+                  <span>@</span>
+                  <input
+                    value={form.username}
+                    onChange={updateField("username")}
+                    autoComplete="username"
+                    minLength={3}
+                    maxLength={20}
+                    pattern="[a-z0-9_]{3,20}"
+                    placeholder="your_username"
+                    required
+                  />
+                </div>
+                <small>3–20 lowercase letters, numbers or underscore.</small>
+              </label>
+            </>
+          )}
+
+          <label>
+            {isSignup ? "Gmail or email" : "Username or Gmail"}
+            <input
+              value={isReset ? form.recovery : isSignup ? form.email : form.identifier}
+              onChange={updateField(isReset ? "recovery" : isSignup ? "email" : "identifier")}
+              autoComplete={isSignup ? "email" : "username"}
+              inputMode={isSignup ? "email" : "text"}
+              placeholder={isSignup ? "you@gmail.com" : "username or you@gmail.com"}
+              required
+            />
+          </label>
+
+          {!isReset && (
+            <label>
+              Password
+              <input
+                type="password"
+                value={form.password}
+                onChange={updateField("password")}
+                autoComplete={isSignup ? "new-password" : "current-password"}
+                minLength={8}
+                placeholder="Minimum 8 characters"
+                required
+              />
+            </label>
+          )}
+
+          {isSignup && (
+            <label>
+              Confirm password
+              <input
+                type="password"
+                value={form.confirmPassword}
+                onChange={updateField("confirmPassword")}
+                autoComplete="new-password"
+                minLength={8}
+                placeholder="Repeat your password"
+                required
+              />
+            </label>
+          )}
+
+          {error && <div className="authMessage error" role="alert">{error}</div>}
+          {status && <div className="authMessage success" role="status">{status}</div>}
+
+          <button className="primaryAction authSubmit" disabled={busy}>
+            {busy
+              ? "Please wait…"
+              : isSignup
+                ? "Create account ↗"
+                : isReset
+                  ? "Send reset link ↗"
+                  : "Log in ↗"}
+          </button>
+        </form>
+
+        {!isReset && !isSignup && (
+          <button className="authTextButton" type="button" onClick={() => changeMode("reset")}>
+            Forgot password?
+          </button>
+        )}
+
+        {!isReset && (
+          <>
+            <div className="authDivider"><span>or</span></div>
+            <button className="authGoogle" type="button" onClick={onGoogle} disabled={busy}>
+              <span className="googleG">G</span> Continue with Google
+            </button>
+          </>
+        )}
+
+        <p className="authSwitch">
+          {isSignup ? "Already have an account?" : isReset ? "Remembered your password?" : "New to Softly?"}{" "}
+          <button type="button" onClick={() => changeMode(isSignup ? "login" : isReset ? "login" : "signup")}>
+            {isSignup || isReset ? "Log in" : "Create account"}
+          </button>
+        </p>
+      </section>
+    </main>
+  );
+}
+
 function StarRating({ value = 0, compact = false }) {
   const rounded = Math.max(0, Math.min(10, Math.round(value)));
   return (
@@ -620,6 +806,19 @@ export default function App() {
       : null,
   );
   const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState("login");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authStatus, setAuthStatus] = useState("");
+  const [authForm, setAuthForm] = useState({
+    displayName: "",
+    username: "",
+    email: "",
+    identifier: "",
+    recovery: "",
+    password: "",
+    confirmPassword: "",
+  });
   const [dataLoading, setDataLoading] = useState(true);
   const [posts, setPosts] = useState([]);
   const [likes, setLikes] = useState([]);
@@ -672,6 +871,7 @@ export default function App() {
   const [postDeleting, setPostDeleting] = useState(false);
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
   const [accountDeleteText, setAccountDeleteText] = useState("");
+  const [accountDeletePassword, setAccountDeletePassword] = useState("");
   const [accountDeleting, setAccountDeleting] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState("");
   const [chatSearch, setChatSearch] = useState("");
@@ -713,6 +913,11 @@ export default function App() {
     },
     [],
   );
+
+  useEffect(() => {
+    setAuthError("");
+    setAuthStatus("");
+  }, [authMode]);
 
   useEffect(() => {
     const overlayOpen =
@@ -805,6 +1010,7 @@ export default function App() {
         const userRef = doc(db, "users", nextUser.uid);
         const existing = await getDoc(userRef);
         if (existing.exists()) {
+          const existingProfile = existing.data();
           await setDoc(
             userRef,
             {
@@ -813,15 +1019,36 @@ export default function App() {
             },
             { merge: true },
           );
+          const savedUsername = existingProfile.usernameLower || existingProfile.username || "";
+          if (usernamePattern.test(savedUsername) && nextUser.email) {
+            const usernameRef = doc(db, "usernames", savedUsername);
+            const usernameRecord = await getDoc(usernameRef);
+            if (usernameRecord.exists()) {
+              await updateDoc(usernameRef, {
+                loginEmail: nextUser.email.toLowerCase(),
+              });
+            } else {
+              await setDoc(usernameRef, {
+                uid: nextUser.uid,
+                username: savedUsername,
+                loginEmail: nextUser.email.toLowerCase(),
+                createdAt: existingProfile.joinedAt || serverTimestamp(),
+              });
+            }
+          }
         } else {
-          await setDoc(userRef, {
-            displayName: nextUser.displayName || "Softly writer",
-            email: nextUser.email || "",
-            photoURL: nextUser.photoURL || "",
-            bio: "",
-            joinedAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+          await setDoc(
+            userRef,
+            {
+              displayName: nextUser.displayName || "Softly writer",
+              email: nextUser.email || "",
+              photoURL: nextUser.photoURL || "",
+              bio: "",
+              joinedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          );
         }
       }
     });
@@ -1419,19 +1646,155 @@ export default function App() {
     }
   };
 
+  const authErrorMessage = (error) => {
+    const messages = {
+      "auth/email-already-in-use": "An account already exists with this email. Log in or reset its password.",
+      "auth/invalid-credential": "Username/email or password is incorrect.",
+      "auth/invalid-email": "Enter a valid Gmail or email address.",
+      "auth/too-many-requests": "Too many attempts. Please wait a little and try again.",
+      "auth/user-disabled": "This account has been disabled.",
+      "auth/weak-password": "Use a stronger password with at least 8 characters.",
+      "auth/network-request-failed": "Check your internet connection and try again.",
+    };
+    return messages[error?.code] || error?.message || "Something went wrong. Please try again.";
+  };
+
+  const resolveLoginEmail = async (identifier) => {
+    const normalized = identifier.trim().toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return normalized;
+    const username = normalized.replace(/^@/, "");
+    if (!usernamePattern.test(username)) {
+      throw new Error("Enter a valid username or email address.");
+    }
+    if (!db) throw new Error("Login service is not ready. Refresh and try again.");
+    const usernameSnapshot = await getDoc(doc(db, "usernames", username));
+    const loginEmail = usernameSnapshot.data()?.loginEmail?.toLowerCase?.() || "";
+    if (!usernameSnapshot.exists() || !loginEmail) {
+      throw new Error("Username/email or password is incorrect.");
+    }
+    return loginEmail;
+  };
+
+  const handlePasswordAuth = async (event) => {
+    event.preventDefault();
+    if (!auth || !db || authBusy) return;
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthStatus("");
+
+    try {
+      await authPersistenceReady;
+      if (authMode === "signup") {
+        const displayName = cleanText(authForm.displayName, 50);
+        const username = authForm.username.trim().toLowerCase().replace(/^@/, "");
+        const email = authForm.email.trim().toLowerCase();
+        if (displayName.length < 2) throw new Error("Enter your full name.");
+        if (!usernamePattern.test(username)) {
+          throw new Error("Username needs 3–20 lowercase letters, numbers or _ only.");
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new Error("Enter a valid Gmail or email address.");
+        }
+        if (authForm.password.length < 8) {
+          throw new Error("Password must contain at least 8 characters.");
+        }
+        if (authForm.password !== authForm.confirmPassword) {
+          throw new Error("Both passwords must match.");
+        }
+
+        const usernameRef = doc(db, "usernames", username);
+        if ((await getDoc(usernameRef)).exists()) {
+          throw new Error("That username is already taken. Try another one.");
+        }
+
+        const credential = await createUserWithEmailAndPassword(auth, email, authForm.password);
+        try {
+          await updateProfile(credential.user, { displayName });
+          await runTransaction(db, async (transaction) => {
+            const usernameSnapshot = await transaction.get(usernameRef);
+            if (usernameSnapshot.exists()) throw new Error("USERNAME_TAKEN");
+            transaction.set(usernameRef, {
+              uid: credential.user.uid,
+              username,
+              loginEmail: email,
+              createdAt: serverTimestamp(),
+            });
+            transaction.set(
+              doc(db, "users", credential.user.uid),
+              {
+                displayName,
+                email,
+                photoURL: "",
+                bio: "",
+                location: "",
+                website: "",
+                username,
+                usernameLower: username,
+                joinedAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true },
+            );
+          });
+          await sendEmailVerification(credential.user).catch(() => null);
+          setNotice("Account created. A verification link has been sent to your email.");
+        } catch (profileError) {
+          await deleteUser(credential.user).catch(() => null);
+          if (profileError?.message === "USERNAME_TAKEN") {
+            throw new Error("That username was just taken. Please choose another one.");
+          }
+          throw profileError;
+        }
+      } else {
+        const email = await resolveLoginEmail(authForm.identifier);
+        await signInWithEmailAndPassword(auth, email, authForm.password);
+      }
+    } catch (error) {
+      setAuthError(authErrorMessage(error));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleForgotPassword = async (event) => {
+    event.preventDefault();
+    if (!auth || authBusy) return;
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthStatus("");
+    try {
+      const email = await resolveLoginEmail(authForm.recovery);
+      await sendPasswordResetEmail(auth, email);
+      setAuthStatus("Reset link sent. Open your Gmail/email inbox and follow the secure link.");
+    } catch (error) {
+      if (error?.code === "auth/user-not-found" || error?.message?.includes("incorrect")) {
+        setAuthStatus("If that account exists, a secure reset link has been sent to its email inbox.");
+      } else {
+        setAuthError(authErrorMessage(error));
+      }
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
   const login = async () => {
     if (!auth) {
       setNotice("Google sign-in is loading. Please refresh and try again.");
       return;
     }
     setAuthLoading(true);
+    setAuthBusy(true);
+    setAuthError("");
     try {
       await authPersistenceReady;
       await signInWithPopup(auth, googleProvider);
+      setAuthBusy(false);
+      setAuthLoading(false);
     } catch (error) {
       if (error?.code === "auth/popup-closed-by-user") {
         setNotice("Sign-in window was closed. Tap Google sign-in to try again.");
         setAuthLoading(false);
+        setAuthBusy(false);
         return;
       }
       if (error?.code === "auth/popup-blocked") {
@@ -1439,6 +1802,7 @@ export default function App() {
       } else if (error?.code === "auth/network-request-failed") {
         setNotice("Sign-in needs an internet connection. Please reconnect and try again.");
         setAuthLoading(false);
+        setAuthBusy(false);
         return;
       }
       try {
@@ -1451,6 +1815,7 @@ export default function App() {
             : "Google sign-in could not start. Please refresh and try once more.",
         );
         setAuthLoading(false);
+        setAuthBusy(false);
       }
     }
   };
@@ -1571,6 +1936,7 @@ export default function App() {
           {
             uid: user.uid,
             username,
+            loginEmail: (user.email || "").toLowerCase(),
             createdAt: serverTimestamp(),
           },
           { merge: true },
@@ -1881,6 +2247,7 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
   const openAccountDelete = () => {
     setProfileOpen(false);
     setAccountDeleteText("");
+    setAccountDeletePassword("");
     setAccountDeleteOpen(true);
   };
 
@@ -1890,6 +2257,8 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
       !auth?.currentUser ||
       !db ||
       accountDeleteText !== "DELETE" ||
+      (auth.currentUser.providerData.some((item) => item.providerId === "password") &&
+        !accountDeletePassword) ||
       accountDeleting
     ) {
       return;
@@ -1899,7 +2268,15 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
     let dataRemoved = false;
 
     try {
-      await reauthenticateWithPopup(auth.currentUser, googleProvider);
+      if (auth.currentUser.providerData.some((item) => item.providerId === "password")) {
+        const credential = EmailAuthProvider.credential(
+          auth.currentUser.email || "",
+          accountDeletePassword,
+        );
+        await reauthenticateWithCredential(auth.currentUser, credential);
+      } else {
+        await reauthenticateWithPopup(auth.currentUser, googleProvider);
+      }
 
       const [
         authoredPosts,
@@ -2023,6 +2400,8 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
         error?.code === "auth/cancelled-popup-request"
       ) {
         setNotice("Account deletion cancelled.");
+      } else if (error?.code === "auth/invalid-credential") {
+        setNotice("Current password is incorrect. Nothing was removed.");
       } else if (dataRemoved) {
         setNotice(
           "Your content was cleared, but the login account stayed active. Please try Delete account again.",
@@ -2364,6 +2743,33 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
     if (received?.status === "pending") return "incoming";
     return "none";
   };
+
+  if (!localPreviewMode && firebaseReady && authLoading) {
+    return (
+      <main className="authLoadingScreen" id="main-content" aria-live="polite">
+        <a className="authBrand" href="/">softly<span>.</span></a>
+        <span className="authLoadingOrb" aria-hidden="true" />
+        <strong>Preparing your community…</strong>
+      </main>
+    );
+  }
+
+  if (!localPreviewMode && firebaseReady && !user) {
+    return (
+      <AuthGate
+        mode={authMode}
+        setMode={setAuthMode}
+        form={authForm}
+        setForm={setAuthForm}
+        busy={authBusy}
+        error={authError}
+        status={authStatus}
+        onSubmit={handlePasswordAuth}
+        onForgot={handleForgotPassword}
+        onGoogle={login}
+      />
+    );
+  }
 
   return (
     <>
@@ -3471,9 +3877,22 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
             <h2 id="delete-account-title">Delete your account?</h2>
             <p className="confirmCopy">
               This permanently deletes your profile, reserved username,
-              stories, likes, connections and private messages. Google will
-              ask you to confirm your identity first.
+              stories, likes, connections and private messages. You will
+              confirm your identity first.
             </p>
+            {auth?.currentUser?.providerData?.some((item) => item.providerId === "password") && (
+              <label className="deleteConfirmLabel">
+                Current password
+                <input
+                  type="password"
+                  value={accountDeletePassword}
+                  onChange={(event) => setAccountDeletePassword(event.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
+                  disabled={accountDeleting}
+                />
+              </label>
+            )}
             <label className="deleteConfirmLabel">
               Type <strong>DELETE</strong> to continue
               <input
@@ -3499,7 +3918,10 @@ body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.pag
                 className="destructiveButton"
                 onClick={deleteAccountCompletely}
                 disabled={
-                  accountDeleteText !== "DELETE" || accountDeleting
+                  accountDeleteText !== "DELETE" ||
+                  (auth?.currentUser?.providerData?.some((item) => item.providerId === "password") &&
+                    !accountDeletePassword) ||
+                  accountDeleting
                 }
               >
                 {accountDeleting

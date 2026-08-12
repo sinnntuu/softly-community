@@ -33,12 +33,14 @@ service cloud.firestore {
     function validRoomSubmission(roomId, userId) {
       return request.resource.data.keys().hasOnly([
           "roomId", "userId", "displayName", "profilePhoto",
-          "title", "thought", "imageURL", "quote", "quotePosition", "quoteTone", "theme", "score",
+          "title", "thought", "imageURL", "imageFingerprint", "quote", "quotePosition", "quoteTone",
+          "originalityConfirmed", "integrityScore", "integrityFlags", "theme", "score",
           "feedback", "createdAt", "updatedAt"
         ])
         && request.resource.data.keys().hasAll([
           "roomId", "userId", "displayName", "profilePhoto",
-          "title", "thought", "imageURL", "quote", "quotePosition", "quoteTone", "theme", "score",
+          "title", "thought", "imageURL", "imageFingerprint", "quote", "quotePosition", "quoteTone",
+          "originalityConfirmed", "integrityScore", "integrityFlags", "theme", "score",
           "feedback", "createdAt", "updatedAt"
         ])
         && request.resource.data.roomId == roomId
@@ -59,11 +61,19 @@ service cloud.firestore {
         && request.resource.data.imageURL.matches(
           "^data:image/(jpeg|png|webp);base64,.*"
         )
+        && request.resource.data.imageFingerprint is string
+        && request.resource.data.imageFingerprint.matches("^[a-f0-9]{16}$")
         && request.resource.data.quote is string
         && request.resource.data.quote.size() >= 5
         && request.resource.data.quote.size() <= 180
         && request.resource.data.quotePosition in ["top", "center", "bottom"]
         && request.resource.data.quoteTone in ["light", "dark"]
+        && request.resource.data.originalityConfirmed == true
+        && request.resource.data.integrityScore is int
+        && request.resource.data.integrityScore >= 0
+        && request.resource.data.integrityScore <= 100
+        && request.resource.data.integrityFlags is list
+        && request.resource.data.integrityFlags.size() <= 6
         && request.resource.data.theme is string
         && request.resource.data.theme in [
           "Creative Expression", "Culture & Heritage", "Technology for Good",
@@ -231,22 +241,27 @@ service cloud.firestore {
     }
 
     match /usernames/{username} {
-      allow read: if signedIn();
+      // Username login performs one exact document lookup. Collection listing
+      // remains restricted to signed-in community discovery.
+      allow get: if true;
+      allow list: if signedIn();
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly([
-          "uid", "username", "createdAt"
+          "uid", "username", "loginEmail", "createdAt"
         ])
         && username.matches("^[a-z0-9_]{3,20}$")
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.username == username
+        && request.resource.data.loginEmail == request.auth.token.email
         && request.resource.data.createdAt is timestamp;
       allow update: if signedIn()
         && request.resource.data.keys().hasOnly([
-          "uid", "username", "createdAt"
+          "uid", "username", "loginEmail", "createdAt"
         ])
         && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.username == username
+        && request.resource.data.loginEmail == request.auth.token.email
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }

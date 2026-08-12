@@ -11,6 +11,8 @@ import {
   Lock,
   LogIn,
   Plus,
+  ScanSearch,
+  ShieldCheck,
   Sparkles,
   Trash2,
   UsersRound,
@@ -73,6 +75,121 @@ function ScorePill({ score }) {
   );
 }
 
+const ORIGINALITY_STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
+  "has", "have", "in", "is", "it", "of", "on", "or", "our", "that", "the",
+  "their", "this", "to", "was", "we", "were", "with", "you", "your",
+]);
+
+function normalizedOriginalityWords(value = "") {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !ORIGINALITY_STOP_WORDS.has(word));
+}
+
+function assessQuoteOriginality({ quote = "", thought = "", submissions = [], userId = "" }) {
+  const quoteWords = normalizedOriginalityWords(quote);
+  const thoughtWords = new Set(normalizedOriginalityWords(thought));
+  const normalizedQuote = quoteWords.join(" ");
+  const flags = [];
+  let score = 100;
+
+  const duplicate = submissions.find(
+    (item) =>
+      item.userId !== userId &&
+      normalizedOriginalityWords(item.quote || "").join(" ") === normalizedQuote &&
+      normalizedQuote.length >= 12,
+  );
+  if (duplicate) {
+    flags.push(`Same quote already submitted by ${duplicate.displayName || "another participant"}`);
+    score -= 75;
+  }
+
+  const genericSignals = [
+    "in today s fast paced world",
+    "it is important to note",
+    "delve into",
+    "a testament to",
+    "tapestry of",
+    "unlock the power",
+    "journey of self discovery",
+  ];
+  const searchableQuote = ` ${quote.toLowerCase().replace(/[^a-z0-9\s]/g, " ")} `;
+  if (genericSignals.some((phrase) => searchableQuote.includes(phrase))) {
+    flags.push("Generic writing pattern—organizer review suggested");
+    score -= 22;
+  }
+
+  if (quoteWords.length >= 5) {
+    const uniqueRatio = new Set(quoteWords).size / quoteWords.length;
+    if (uniqueRatio < 0.7) {
+      flags.push("Repeated wording reduces originality confidence");
+      score -= 14;
+    }
+    const overlap = quoteWords.filter((word) => thoughtWords.has(word)).length / quoteWords.length;
+    if (thoughtWords.size > 8 && overlap < 0.18) {
+      flags.push("Quote has little connection with the participant’s explanation");
+      score -= 18;
+    }
+  }
+
+  const safeScore = Math.max(0, Math.min(100, score));
+  return {
+    score: safeScore,
+    flags,
+    risk: safeScore < 45 ? "high" : safeScore < 75 ? "review" : "low",
+    label: safeScore < 45 ? "High review" : safeScore < 75 ? "Review" : "Originality looks good",
+    duplicate: Boolean(duplicate),
+  };
+}
+
+function imageFingerprint(dataURL) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 9;
+      canvas.height = 8;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        reject(new Error("Image originality check is unavailable in this browser."));
+        return;
+      }
+      context.drawImage(image, 0, 0, 9, 8);
+      const pixels = context.getImageData(0, 0, 9, 8).data;
+      let bits = "";
+      for (let y = 0; y < 8; y += 1) {
+        for (let x = 0; x < 8; x += 1) {
+          const offset = (y * 9 + x) * 4;
+          const nextOffset = offset + 4;
+          const gray = pixels[offset] * .299 + pixels[offset + 1] * .587 + pixels[offset + 2] * .114;
+          const nextGray = pixels[nextOffset] * .299 + pixels[nextOffset + 1] * .587 + pixels[nextOffset + 2] * .114;
+          bits += gray > nextGray ? "1" : "0";
+        }
+      }
+      resolve(bits.match(/.{4}/g).map((chunk) => parseInt(chunk, 2).toString(16)).join(""));
+    };
+    image.onerror = () => reject(new Error("Image originality check could not read this picture."));
+    image.src = dataURL;
+  });
+}
+
+function fingerprintDistance(first = "", second = "") {
+  if (!/^[a-f0-9]{16}$/i.test(first) || !/^[a-f0-9]{16}$/i.test(second)) return 64;
+  let distance = 0;
+  for (let index = 0; index < 16; index += 1) {
+    let value = parseInt(first[index], 16) ^ parseInt(second[index], 16);
+    while (value) {
+      distance += value & 1;
+      value >>= 1;
+    }
+  }
+  return distance;
+}
+
 export default function RoomHub({
   db,
   user,
@@ -107,9 +224,11 @@ export default function RoomHub({
     title: "",
     thought: "",
     imageURL: "",
+    imageFingerprint: "",
     quote: "",
     quotePosition: "center",
     quoteTone: "light",
+    originalityConfirmed: false,
   });
   const [imagePreparing, setImagePreparing] = useState(false);
 
@@ -200,9 +319,11 @@ export default function RoomHub({
       title: ownSubmission.title || "",
       thought: ownSubmission.thought || "",
       imageURL: ownSubmission.imageURL || "",
+      imageFingerprint: ownSubmission.imageFingerprint || "",
       quote: ownSubmission.quote || ownSubmission.title || "",
       quotePosition: ownSubmission.quotePosition || "center",
       quoteTone: ownSubmission.quoteTone || "light",
+      originalityConfirmed: Boolean(ownSubmission.originalityConfirmed),
     });
   }, [ownSubmission?.id, ownSubmission?.updatedAt]);
 
@@ -242,11 +363,18 @@ export default function RoomHub({
             body: submission.thought,
             theme: submission.theme || room?.theme || "Student Innovation",
           });
-          return { ...submission, analysis, score: analysis.stars };
+          const integrity = assessQuoteOriginality({
+            quote: submission.quote,
+            thought: submission.thought,
+            submissions,
+            userId: submission.userId,
+          });
+          return { ...submission, analysis, integrity, score: analysis.stars };
         })
         .sort(
           (a, b) =>
             b.score - a.score ||
+            b.integrity.score - a.integrity.score ||
             b.thought.length - a.thought.length ||
             timeValue(a.createdAt) - timeValue(b.createdAt),
         ),
@@ -254,6 +382,16 @@ export default function RoomHub({
   );
 
   const selectedTheme = themeOptions.find((item) => item.name === entryTheme);
+  const liveIntegrity = useMemo(
+    () =>
+      assessQuoteOriginality({
+        quote: entryDraft.quote,
+        thought: entryDraft.thought,
+        submissions,
+        userId: user.uid,
+      }),
+    [entryDraft.quote, entryDraft.thought, submissions, user.uid],
+  );
   const joinThemeDefinition = themeOptions.find((item) => item.name === joinTheme);
   const allSubmitted =
     participants.length >= 2 && submissions.length === participants.length;
@@ -297,9 +435,11 @@ export default function RoomHub({
       title: "",
       thought: "",
       imageURL: "",
+      imageFingerprint: "",
       quote: "",
       quotePosition: "center",
       quoteTone: "light",
+      originalityConfirmed: false,
     });
     setEntryTheme("Student Innovation");
     try {
@@ -427,7 +567,24 @@ export default function RoomHub({
     setError("");
     try {
       const imageURL = await preparePhoto(file);
-      setEntryDraft((current) => ({ ...current, imageURL }));
+      const fingerprint = await imageFingerprint(imageURL);
+      const duplicate = submissions.find(
+        (item) =>
+          item.userId !== user.uid &&
+          item.imageFingerprint &&
+          fingerprintDistance(fingerprint, item.imageFingerprint) <= 5,
+      );
+      if (duplicate) {
+        throw new Error(
+          `This picture is very similar to ${duplicate.displayName || "another participant"}’s room entry. Choose an original picture.`,
+        );
+      }
+      setEntryDraft((current) => ({
+        ...current,
+        imageURL,
+        imageFingerprint: fingerprint,
+        originalityConfirmed: false,
+      }));
     } catch (imageError) {
       setError(imageError.message || "The picture could not be prepared.");
     } finally {
@@ -457,6 +614,14 @@ export default function RoomHub({
       setError("Add one original picture with your thought.");
       return;
     }
+    if (!entryDraft.originalityConfirmed) {
+      setError("Confirm that the quote and picture are yours or properly permitted.");
+      return;
+    }
+    if (liveIntegrity.duplicate) {
+      setError("That quote already exists in this room. Write it in your own words.");
+      return;
+    }
     if (room?.status !== "open") {
       setError("Entries are closed for this room.");
       return;
@@ -469,6 +634,18 @@ export default function RoomHub({
     setBusy(true);
     setError("");
     try {
+      const fingerprint = entryDraft.imageFingerprint || await imageFingerprint(entryDraft.imageURL);
+      const duplicateImage = submissions.find(
+        (item) =>
+          item.userId !== user.uid &&
+          item.imageFingerprint &&
+          fingerprintDistance(fingerprint, item.imageFingerprint) <= 5,
+      );
+      if (duplicateImage) {
+        throw new Error(
+          `This picture is very similar to ${duplicateImage.displayName || "another participant"}’s entry.`,
+        );
+      }
       const analysis = analyzeThought({
         title,
         excerpt: thought.slice(0, 240),
@@ -488,9 +665,13 @@ export default function RoomHub({
         title,
         thought,
         imageURL: entryDraft.imageURL,
+        imageFingerprint: fingerprint,
         quote,
         quotePosition: entryDraft.quotePosition,
         quoteTone: entryDraft.quoteTone,
+        originalityConfirmed: true,
+        integrityScore: liveIntegrity.score,
+        integrityFlags: liveIntegrity.flags.slice(0, 6),
         theme: entryTheme,
         score: analysis.stars,
         feedback: analysis.feedback,
@@ -593,13 +774,14 @@ export default function RoomHub({
               <small>${escapeHTML(entry.theme || room.theme || "Student Innovation")}</small>
               <h2>${escapeHTML(entry.title)}</h2>
               <p class="author">${escapeHTML(entry.displayName)} · ★ ${entry.score}/10</p>
+              <p class="integrity">Originality signal: ${entry.integrity.score}% · ${escapeHTML(entry.integrity.label)}</p>
               <p>${escapeHTML(entry.thought).replace(/\n/g, "<br>")}</p>
               <strong>${escapeHTML(entry.analysis.feedback)}</strong>
             </div>
           </article>`,
       )
       .join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHTML(room.title)} results</title><style>body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.page{max-width:900px;margin:auto;padding:42px 20px}.brand{font:700 28px Georgia,serif}.brand i,.eyebrow{color:#a54836}.eyebrow{margin-top:42px;font-size:11px;font-weight:800;letter-spacing:.16em}h1{margin:12px 0;font:500 48px/1 Georgia,serif}.summary{color:#575c56}.entry{display:grid;grid-template-columns:48px 260px 1fr;gap:20px;margin-top:24px;padding:20px;border-radius:24px;background:#e9e7df;box-shadow:10px 10px 24px #c1c0b8,-10px -10px 24px #fff}.entry.winner{outline:2px solid #a54836}.rank{font:700 28px Georgia,serif;color:#a54836}.poster{position:relative;display:flex;overflow:hidden;min-height:180px;max-height:380px;margin:0;border-radius:18px;background:#20241f}.poster img{display:block;width:100%;height:auto;object-fit:contain}.poster blockquote{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;padding:24px;color:#fff;font:700 22px/1.25 Georgia,serif;text-align:center;text-shadow:0 2px 12px #000}.poster.top blockquote{align-items:flex-start}.poster.bottom blockquote{align-items:flex-end}.poster.dark blockquote{color:#20241f;text-shadow:0 1px 8px #fff;background:linear-gradient(90deg,rgba(255,255,255,.28),rgba(255,255,255,.08))}.entry h2{margin:7px 0;font:600 25px Georgia,serif}.entry small{color:#a54836;font-weight:700}.entry p{color:#575c56;line-height:1.6}.entry .author{color:#20241f;font-weight:700}.entry strong{color:#a54836;font-size:12px}.footer{margin-top:40px;color:#575c56;font-size:11px}@media(max-width:650px){h1{font-size:38px}.entry{grid-template-columns:34px 1fr}.poster,.copy{grid-column:2}.poster blockquote{font-size:18px}}</style></head><body><main class="page"><div class="brand">softly<i>.</i></div><p class="eyebrow">ROOM ${escapeHTML(activeCode)} · LEADERBOARD</p><h1>${escapeHTML(room.title)}</h1><p class="summary">${ranking.length} participants · Winner: <strong>${escapeHTML(ranking[0].displayName)}</strong> · Meaningfulness-based analysis</p>${cards}<p class="footer">Downloaded from Softly Community · Founder SINTU KUMAR RAI</p></main></body></html>`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHTML(room.title)} results</title><style>body{margin:0;background:#e9e7df;color:#20241f;font-family:Arial,sans-serif}.page{max-width:900px;margin:auto;padding:42px 20px}.brand{font:700 28px Georgia,serif}.brand i,.eyebrow{color:#a54836}.eyebrow{margin-top:42px;font-size:11px;font-weight:800;letter-spacing:.16em}h1{margin:12px 0;font:500 48px/1 Georgia,serif}.summary{color:#575c56}.entry{display:grid;grid-template-columns:48px 260px 1fr;gap:20px;margin-top:24px;padding:20px;border-radius:24px;background:#e9e7df;box-shadow:10px 10px 24px #c1c0b8,-10px -10px 24px #fff}.entry.winner{outline:2px solid #a54836}.rank{font:700 28px Georgia,serif;color:#a54836}.poster{position:relative;display:flex;overflow:hidden;min-height:180px;max-height:380px;margin:0;border-radius:18px;background:#20241f}.poster img{display:block;width:100%;height:auto;object-fit:contain}.poster blockquote{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;margin:0;padding:24px;color:#fff;font:700 22px/1.25 Georgia,serif;text-align:center;text-shadow:0 2px 12px #000}.poster.top blockquote{align-items:flex-start}.poster.bottom blockquote{align-items:flex-end}.poster.dark blockquote{color:#20241f;text-shadow:0 1px 8px #fff;background:linear-gradient(90deg,rgba(255,255,255,.28),rgba(255,255,255,.08))}.entry h2{margin:7px 0;font:600 25px Georgia,serif}.entry small{color:#a54836;font-weight:700}.entry p{color:#575c56;line-height:1.6}.entry .author{color:#20241f;font-weight:700}.entry .integrity{display:inline-block;border-radius:999px;padding:6px 9px;background:#dce5dc;color:#426b49;font-size:11px;font-weight:700}.entry strong{color:#a54836;font-size:12px}.footer{margin-top:40px;color:#575c56;font-size:11px}@media(max-width:650px){h1{font-size:38px}.entry{grid-template-columns:34px 1fr}.poster,.copy{grid-column:2}.poster blockquote{font-size:18px}}</style></head><body><main class="page"><div class="brand">softly<i>.</i></div><p class="eyebrow">ROOM ${escapeHTML(activeCode)} · LEADERBOARD</p><h1>${escapeHTML(room.title)}</h1><p class="summary">${ranking.length} participants · Winner: <strong>${escapeHTML(ranking[0].displayName)}</strong> · Meaningfulness-based analysis</p>${cards}<p class="footer">Downloaded from Softly Community · Founder SINTU KUMAR RAI</p></main></body></html>`;
     const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -920,6 +1102,26 @@ export default function RoomHub({
                       </select>
                     </label>
                   </div>
+                  <section className={`roomIntegrityCard risk-${liveIntegrity.risk}`} aria-live="polite">
+                    <span className="roomIntegrityIcon"><ShieldCheck size={19} /></span>
+                    <div>
+                      <span className="roomIntegrityTitle">
+                        Originality signal <b>{liveIntegrity.score}%</b>
+                      </span>
+                      <strong>{liveIntegrity.label}</strong>
+                      {liveIntegrity.flags.length ? (
+                        <ul>
+                          {liveIntegrity.flags.map((flag) => <li key={flag}>{flag}</li>)}
+                        </ul>
+                      ) : (
+                        <p>No room duplicate or strong generic-writing signal found.</p>
+                      )}
+                      <small>
+                        Automated checks are review signals, not proof that text is AI-written.
+                        The organizer makes the final decision.
+                      </small>
+                    </div>
+                  </section>
                   <div className="roomPictureField">
                     {entryDraft.imageURL ? (
                       <div
@@ -932,7 +1134,12 @@ export default function RoomHub({
                         <button
                           type="button"
                           onClick={() =>
-                            setEntryDraft((current) => ({ ...current, imageURL: "" }))
+                            setEntryDraft((current) => ({
+                              ...current,
+                              imageURL: "",
+                              imageFingerprint: "",
+                              originalityConfirmed: false,
+                            }))
                           }
                         >
                           Replace picture
@@ -947,6 +1154,30 @@ export default function RoomHub({
                       </label>
                     )}
                   </div>
+                  <div className="roomSourceReview">
+                    <ScanSearch size={17} />
+                    <span>
+                      Softly blocks duplicate/near-duplicate pictures inside this room. For a
+                      wider web source check, the organizer can use
+                      {" "}<a href="https://lens.google.com/" target="_blank" rel="noopener noreferrer">Google Lens ↗</a>.
+                    </span>
+                  </div>
+                  <label className="roomOriginalityDeclaration">
+                    <input
+                      type="checkbox"
+                      checked={entryDraft.originalityConfirmed}
+                      onChange={(event) =>
+                        setEntryDraft((current) => ({
+                          ...current,
+                          originalityConfirmed: event.target.checked,
+                        }))
+                      }
+                      required
+                    />
+                    <span>
+                      I confirm that this quote and picture are mine, licensed, or used with permission.
+                    </span>
+                  </label>
                   <button className="primaryAction" disabled={busy || imagePreparing}>
                     <CheckCircle2 size={15} /> {busy ? "Saving…" : ownSubmission ? "Update entry" : "Submit entry"}
                   </button>
@@ -989,6 +1220,12 @@ export default function RoomHub({
                         <h3>{entry.title}</h3>
                         <p>{entry.thought}</p>
                         <strong>{entry.analysis.feedback}</strong>
+                        <span className={`roomIntegrityBadge risk-${entry.integrity.risk}`}>
+                          <ShieldCheck size={12} /> {entry.integrity.score}% originality signal
+                        </span>
+                        <a className="roomLensLink" href="https://lens.google.com/" target="_blank" rel="noopener noreferrer">
+                          <ScanSearch size={12} /> Check image source
+                        </a>
                       </div>
                       <ScorePill score={entry.score} />
                     </article>
